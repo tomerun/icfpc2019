@@ -1,0 +1,13 @@
+name: solver
+version: 0.1.0
+
+authors:
+  - Nobuaki Tanaka <tomerunmail@gmail.com>
+
+targets:
+  solver:
+    main: src/solver.cr
+
+crystal: 0.29.0
+
+license: MIT
