@@ -8,6 +8,10 @@ targets:
   solver:
     main: src/solver.cr
 
+dependencies:
+  mysql:
+    github: crystal-lang/crystal-mysql
+
 crystal: 0.29.0
 
 license: MIT

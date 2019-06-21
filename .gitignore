@@ -1,2 +1,3 @@
 data/
-bin/
+solver/bin/
+solver/lib/

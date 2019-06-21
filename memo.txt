@@ -1,0 +1,29 @@
+メモ
+
+環境変数
+
+- AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+- TASKNAME
+- TIMELIMIT
+- DB_URL, DB_USER, DB_PASS
+
+アップロード用zip作成
+rm solver.zip; zip -r solver.zip solver/* -x solver/bin/* solver/lib/*
+aws s3 cp solver.zip s3://icfpc-2019/solver.zip solver.zip --profile icfpc
+
+alpine上でinstallしたcrystalがまともに動かん
+https://github.com/sam0x17/crystal-alpine
+を参考に色々ライブラリ足した（alpineを使っている意味が…）
+→やっぱりサイズでかくなってしまって意味がないのでベースイメージはcrystalのものを使おう
+
+DBテーブル定義
+CREATE TABLE results (
+	id INTEGER UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT,
+	task VARCHAR(255) NOT NULL,
+	created_at DATETIME NOT NULL, 
+	score INTEGER UNSIGNED NOT NULL,
+	commands MEDIUMTEXT,
+	options JSON DEFAULT NULL
+);
+
+
