@@ -1,5 +1,5 @@
 require "mysql"
-require "./input_parser"
+require "./defs"
 
 def analyze(filename)
   STDERR << filename << "\n"

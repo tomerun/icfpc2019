@@ -1,7 +1,7 @@
 require "json"
 require "mysql"
 require "random"
-require "./input_parser"
+require "./defs"
 require "./solver"
 
 class Result

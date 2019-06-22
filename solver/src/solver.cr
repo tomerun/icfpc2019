@@ -1,5 +1,5 @@
 require "random"
-require "./input_parser"
+require "./defs"
 
 class Solver
   def initialize(@map : Map, @tl : Int64)
