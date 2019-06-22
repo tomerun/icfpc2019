@@ -1,10 +1,9 @@
 require "json"
 require "mysql"
 require "random"
+require "./input_parser"
 
-puts read_line.split(";")
-
-struct Result
+class Result
   property task, score, commands
 
   def initialize(@task : String, @score : Int32, @commands : String)
@@ -21,5 +20,6 @@ struct Result
   end
 end
 
-res = Result.new(ENV["TASKNAME"], Random.rand(1000), "AEIOU")
-res.upload
+puts InputParser.parse(read_line)
+# res = Result.new(ENV["TASKNAME"], Random.rand(1000), "AEIOU")
+# res.upload
