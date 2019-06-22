@@ -45,4 +45,31 @@ OK
 ごはん
 
 
+13:52
+
+テストケースのビジュアライズしよっと
+その前にまずはパースやな
+
+17:00
+
+とりあえずのパーサはできた。
+
+テストケースの情報もDBに入れとこう
+
+CREATE TABLE tasks (
+	name VARCHAR(255) PRIMARY KEY NOT NULL,
+	height INTEGER UNSIGNED NOT NULL,
+	width INTEGER UNSIGNED NOT NULL,
+	empty INTEGER UNSIGNED NOT NULL,
+	booster_b INTEGER UNSIGNED NOT NULL,
+	booster_f INTEGER UNSIGNED NOT NULL,
+	booster_l INTEGER UNSIGNED NOT NULL,
+	booster_x INTEGER UNSIGNED NOT NULL,
+	booster_r INTEGER UNSIGNED NOT NULL,
+	booster_c INTEGER UNSIGNED NOT NULL
+);
+
+MySQLのデフォルトのCOLLATIONって latin1_swedish_ci ってやつなのか
+
+300ケースの満点スコアは 4219281.834526764 か
 

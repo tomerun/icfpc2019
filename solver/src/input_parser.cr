@@ -76,7 +76,7 @@ end
 
 class InputParser
   def self.parse(input : String)
-    map_str, point_str, obstacles_str, boosters_str = input.split("#")
+    map_str, point_str, obstacles_str, boosters_str = input.strip.split("#")
     map_edge = parse_map(map_str)
     init_pos = parse_point(point_str)
     obstacles_edge = parse_obsts(obstacles_str)
@@ -92,6 +92,7 @@ class InputParser
   end
 
   def self.parse_map(str)
+    return [] of Point if str.empty?
     str.split(/,(?=\()/).map { |s| parse_point(s) }
   end
 
@@ -101,23 +102,25 @@ class InputParser
 
   def self.parse_boosters(str, h, w)
     bs = Hash(Point, BoosterType).new
-    str.split(";").each do |s|
-      p = parse_point(s[1..])
-      t = case s[0]
-          when 'B'
-            BoosterType::B
-          when 'F'
-            BoosterType::F
-          when 'L'
-            BoosterType::L
-          when 'X'
-            BoosterType::X
-          when 'R'
-            BoosterType::R
-          when 'C'
-            BoosterType::C
-          end
-      bs[p] = t if t
+    if !str.empty?
+      str.split(";").each do |s|
+        p = parse_point(s[1..])
+        t = case s[0]
+            when 'B'
+              BoosterType::B
+            when 'F'
+              BoosterType::F
+            when 'L'
+              BoosterType::L
+            when 'X'
+              BoosterType::X
+            when 'R'
+              BoosterType::R
+            when 'C'
+              BoosterType::C
+            end
+        bs[p] = t if t
+      end
     end
     bs
   end
@@ -135,6 +138,7 @@ class InputParser
   end
 
   private def self.init_walls(field, edges, value)
+    return if edges.empty?
     es = edges + [edges[0]]
     edges.size.times do |i|
       p0 = es[i]

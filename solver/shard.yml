@@ -7,6 +7,8 @@ authors:
 targets:
   solver:
     main: src/solver.cr
+  input_analyzer:
+    main: src/input_analyzer.cr
 
 dependencies:
   mysql:
