@@ -12,6 +12,15 @@ class Map
     @beacons = Array(Point).new
   end
 
+  def initialize(
+    @wall : Array(BitArray),
+    @covered : Array(BitArray),
+    @booster : Hash(Point, BoosterType),
+    @bots : Array(Bot),
+    @beacons : Array(Point)
+  )
+  end
+
   def h
     @wall.size
   end
@@ -55,14 +64,16 @@ struct Point
 end
 
 class Bot
-  property pos, arm, fast_time : Int32, drill_time : Int32
+  property pos, arm : Array(Point), fast_time : Int32, drill_time : Int32, actions : Array(ActionType)
 
-  def initialize(@pos : Point, @arm : Array(Point))
+  def initialize(@pos : Point)
     @fast_time = @drill_time = 0
+    @arm = -1.upto(1).map { |dy| Point.new(@pos.x, @pos.y + dy) }.to_a
+    @actions = [] of ActionType
   end
 
   def to_s(io : IO)
-    io << pos << " " << arm << " ft:#{fast_time} dt:#{drill_time}"
+    io << @pos << " " << @arm << " ft:#{@fast_time} dt:#{@drill_time}"
   end
 
   def inspect(io : IO)
@@ -74,6 +85,39 @@ enum BoosterType
   B; F; L; X; R; C
 end
 
+enum ActionSimple
+  W; S; A; D; Z; E; Q; F; L; R; C
+end
+
+abstract struct ActionWithCoord
+  property ch, x, y
+
+  def initialize(@ch : Char, @x : Int32, @y : Int32)
+  end
+
+  def to_s(io : IO)
+    io << @ch << "(" << @x << "," << @y << ")"
+  end
+
+  def inspect(io : IO)
+    to_s(io)
+  end
+end
+
+struct ActionB < ActionWithCoord
+  def initialize(x : Int32, y : Int32)
+    super('B', x, y)
+  end
+end
+
+struct ActionX < ActionWithCoord
+  def initialize(x : Int32, y : Int32)
+    super('X', x, y)
+  end
+end
+
+alias ActionType = ActionSimple | ActionB | ActionX
+
 class InputParser
   def self.parse(input : String)
     map_str, point_str, obstacles_str, boosters_str = input.strip.split("#")
@@ -82,8 +126,7 @@ class InputParser
     obstacles_edge = parse_obsts(obstacles_str)
     wall = create_walls(map_edge, obstacles_edge)
     boosters = parse_boosters(boosters_str, wall.size, wall[0].size)
-    init_arms = -1.upto(1).map { |dy| Point.new(init_pos.x, init_pos.y + dy) }.to_a
-    Map.new(wall, boosters, [Bot.new(init_pos, init_arms)])
+    Map.new(wall, boosters, [Bot.new(init_pos)])
   end
 
   def self.parse_point(str)

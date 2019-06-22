@@ -1,25 +1,17 @@
-require "json"
-require "mysql"
 require "random"
 require "./input_parser"
 
-class Result
-  property task, score, commands
-
-  def initialize(@task : String, @score : Int32, @commands : String)
+class Solver
+  def initialize(@map : Map, @tl : Int64)
   end
 
-  def upload
-    options = Hash(String, JSON::Any::Type).new
-    options["TIMELIMIT"] = ENV["TIMELIMIT"].to_i64
-    DB.open "mysql://#{ENV["DB_USER"]}:#{ENV["DB_PASS"]}@#{ENV["DB_DOMAIN"]}/icfpc" do |db|
-      db.exec(
-        "insert into results(task, created_at, score, commands, options) values (?, ?, ?, ?, ?)",
-        @task, Time.now, @score, @commands, options.to_json)
-    end
+  def solve
+    score = 42
+    @map.bots << Bot.new(Point.new(5, 7))
+    @map.bots[0].actions << ActionSimple::W << ActionSimple::S << ActionB.new(-1, 2)
+    @map.bots[1].actions << ActionX.new(9, 8) << ActionSimple::C
+    commands = @map.bots.map { |bot| bot.actions.join }
+    {score, commands}
+    # returns {score, Array(Array(ActionType))}
   end
 end
-
-puts InputParser.parse(read_line)
-# res = Result.new(ENV["TASKNAME"], Random.rand(1000), "AEIOU")
-# res.upload

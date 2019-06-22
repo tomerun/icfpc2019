@@ -6,7 +6,7 @@ authors:
 
 targets:
   solver:
-    main: src/solver.cr
+    main: src/main.cr
   input_analyzer:
     main: src/input_analyzer.cr
 
