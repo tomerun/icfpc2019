@@ -1,24 +1,25 @@
 require "json"
 require "mysql"
+require "random"
 
-# puts read_line.split(";")
-# puts ENV["TIMELIMIT"]
+puts read_line.split(";")
 
 struct Result
   property task, score, commands
 
   def initialize(@task : String, @score : Int32, @commands : String)
   end
-end
 
-def upload_result(res : Result)
-  options = Hash(String, JSON::Any::Type).new
-  options["TIMELIMIT"] = ENV["TIMELIMIT"].to_i64
-  DB.open "mysql://#{ENV["DB_USER"]}:#{ENV["DB_PASS"]}@#{ENV["DB_DOMAIN"]}/icfpc" do |db|
-    db.exec(
-      "insert into results(task, created_at, score, commands, options) values (?, ?, ?, ?, ?)",
-      res.task, Time.now, res.score, res.commands, options.to_json)
+  def upload
+    options = Hash(String, JSON::Any::Type).new
+    options["TIMELIMIT"] = ENV["TIMELIMIT"].to_i64
+    DB.open "mysql://#{ENV["DB_USER"]}:#{ENV["DB_PASS"]}@#{ENV["DB_DOMAIN"]}/icfpc" do |db|
+      db.exec(
+        "insert into results(task, created_at, score, commands, options) values (?, ?, ?, ?, ?)",
+        @task, Time.now, @score, @commands, options.to_json)
+    end
   end
 end
 
-upload_result(Result.new("prob-151", 999, "AEIOU"))
+res = Result.new(ENV["TASKNAME"], Random.rand(1000), "AEIOU")
+res.upload
