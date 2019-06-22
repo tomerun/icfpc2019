@@ -1,4 +1,4 @@
-メモ
+2019/06/21
 
 環境変数
 
@@ -6,10 +6,6 @@
 - TASKNAME
 - TIMELIMIT
 - DB_URL, DB_USER, DB_PASS
-
-アップロード用zip作成
-rm solver.zip; zip -r solver.zip solver/* -x solver/bin/* solver/lib/*
-aws s3 cp solver.zip s3://icfpc-2019/solver.zip solver.zip --profile icfpc
 
 alpine上でinstallしたcrystalがまともに動かん
 https://github.com/sam0x17/crystal-alpine
@@ -25,5 +21,28 @@ CREATE TABLE results (
 	commands MEDIUMTEXT,
 	options JSON DEFAULT NULL
 );
+
+
+2019/06/22 12:18
+
+AWS BatchでS3からソースコード取得→実行→結果をRDSに入れる
+までできた
+
+AWS ACCESS KEY系はIAM Roleでやるから渡す必要なかった
+AWS BatchにどうやってDBの認証情報渡せばいいんだ…ソースコード内には書きたくないが
+よくわからんので仕方ないがプレインテキストの環境変数かなあ
+
+手元からジョブを投げられるようにする
+
+12:50
+
+投げることはできた
+https://qiita.com/aokad/items/aed8034fb087a6bf99c3
+がRUNNABLEから動かない…
+スポットリクエスト作られてないなあ→数分待ったら作られた
+OK
+
+ごはん
+
 
 
