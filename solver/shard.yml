@@ -9,6 +9,8 @@ targets:
     main: src/main.cr
   input_analyzer:
     main: src/input_analyzer.cr
+  submission_creator:
+    main: src/submission_creator.cr
 
 dependencies:
   mysql:
