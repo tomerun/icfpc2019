@@ -1,15 +1,27 @@
 require "bit_array"
 
 class Map
-  property wall, covered : Array(BitArray), booster, bots, beacons
+  property wall, covered : Array(BitArray), booster, bots, beacons, n_empty : Int32
+  property n_B, n_F, n_L, n_R, n_C
 
   def initialize(
     @wall : Array(BitArray),
     @booster : Hash(Point, BoosterType),
-    @bots : Array(Bot)
+    bot : Bot
   )
+    @bots = Array.new(1, bot)
     @covered = Array.new(@wall.size) { BitArray.new(@wall[0].size) }
+    @covered[bot.y][bot.x] = true
+    bot.arm.each do |ap|
+      ax = bot.x + ap.x
+      ay = bot.y + ap.y
+      if 0 <= ax && ax < w && 0 <= ay && ay < h
+        @covered[ay][ax] = true
+      end
+    end
     @beacons = Array(Point).new
+    @n_empty = @wall.map { |row| row.count(false) }.sum
+    @n_B = @n_F = @n_L = @n_R = @n_C = 0
   end
 
   def initialize(
@@ -17,8 +29,21 @@ class Map
     @covered : Array(BitArray),
     @booster : Hash(Point, BoosterType),
     @bots : Array(Bot),
-    @beacons : Array(Point)
+    @beacons : Array(Point),
+    @n_empty : Int32,
+    @n_B,
+    @n_F,
+    @n_L,
+    @n_R,
+    @n_C
   )
+  end
+
+  def clone
+    Map.new(
+      @wall.dup, @covered.dup, @booster.clone, @bots.clone, @beacons.dup, @n_empty,
+      @n_B, @n_F, @n_L, @n_R, @n_C
+    )
   end
 
   def h
@@ -27,6 +52,154 @@ class Map
 
   def w
     @wall[0].size
+  end
+
+  def get_booster(bot)
+    b = @booster.fetch(bot.pos, nil)
+    if b && b != BoosterType::X
+      @booster.delete(bot.pos)
+      case b
+      when BoosterType::B
+        @n_B += 1
+      when BoosterType::F
+        @n_F += 1
+      when BoosterType::L
+        @n_L += 1
+      when BoosterType::R
+        @n_R += 1
+      when BoosterType::C
+        @n_C += 1
+      end
+    end
+  end
+
+  def apply_action(action, bot, next_spawn)
+    bot.actions << action
+    case action
+    when ActionSimple::W
+      bot.move(0, 1, self)
+    when ActionSimple::S
+      bot.move(0, -1, self)
+    when ActionSimple::A
+      bot.move(-1, 0, self)
+    when ActionSimple::D
+      bot.move(1, 0, self)
+    when ActionSimple::E
+      bot.rot_cw(self)
+    when ActionSimple::Q
+      bot.rot_ccw(self)
+    when ActionSimple::F
+      @n_F -= 1
+      bot.fast_time = 50
+    when ActionSimple::L
+      @n_L -= 1
+      bot.drill_time = 30
+    when ActionSimple::R
+      @n_R -= 1
+      @beacons << bot.pos
+    when ActionSimple::C
+      @n_C -= 1
+      next_spawn << Bot.new(bot.pos)
+    when ActionB
+      @n_B -= 1
+      bot.arm << Point.new(action.x, action.y)
+      cover(bot.x, bot.y, action.x, action.y)
+    when ActionT
+      bot.pos.x = action.x
+      bot.pos.y = action.y
+      cover(bot)
+    end
+    bot.fast_time -= 1 if bot.fast_time > 0
+    bot.drill_time -= 1 if bot.drill_time > 0
+  end
+
+  def cover(bot)
+    bot.arm.each do |ap|
+      cover(bot.x, bot.y, ap.x, ap.y)
+    end
+    cover(bot.x, bot.y, 0, 0)
+  end
+
+  def cover(bx, by, dx, dy)
+    x = bx + dx
+    y = by + dy
+    if inside(x, y) && !@covered[y][x] && visible(bx, by, dx, dy)
+      @covered[y][x] = true
+      @n_empty -= 1
+    end
+  end
+
+  def finalize_turn(next_spawn)
+    @bots.concat(next_spawn)
+    next_spawn.each { |b| cover(b) }
+    next_spawn.clear
+  end
+
+  def visible(bx, by, dx, dy)
+    return @wall[by + dy][bx + dx] if {dx.abs, dy.abs}.max <= 1
+    if dx < 0
+      bx += dx
+      by += dy
+      dx *= -1
+      dy *= -1
+    end
+    ex = bx + dx
+    ey = by + dy
+    my = dy.sign
+    if dx == 0
+      while by != ey
+        by += my
+        return false if @wall[by][bx]
+      end
+    elsif dy == 0
+      while bx != ex
+        bx += 1
+        return false if @wall[by][bx]
+      end
+    elsif dy > 0
+      div = 2 * dx
+      by = (by * 2 + 1) * dx
+      ny = by + dy
+      (by / div).upto((ny - 1) / div) do |y|
+        return false if @wall[y][bx]
+      end
+      by = ny
+      (bx + 1).upto(ex - 1) do |x|
+        ny = by + dy * 2
+        (by / div).upto((ny - 1) / div) do |y|
+          return false if @wall[y][x]
+        end
+        by = ny
+      end
+      ny = by + dy
+      (by / div).upto((ny - 1) / div) do |y|
+        return false if @wall[y][ex]
+      end
+    else
+      div = 2 * dx
+      by = (by * 2 + 1) * dx
+      ny = by + dy
+      (ny / div).upto((by - 1) / div) do |y|
+        return false if @wall[y][bx]
+      end
+      by = ny
+      (bx + 1).upto(ex - 1) do |x|
+        ny = by + dy * 2
+        (ny / div).upto((by - 1) / div) do |y|
+          return false if @wall[y][x]
+        end
+        by = ny
+      end
+      ny = by + dy
+      (ny / div).upto((by - 1) / div) do |y|
+        return false if @wall[y][ex]
+      end
+    end
+    return true
+  end
+
+  def inside(x, y)
+    0 <= x && x < w && 0 <= y && y < h
   end
 
   def to_s(io : IO)
@@ -64,12 +237,59 @@ struct Point
 end
 
 class Bot
-  property pos, arm : Array(Point), fast_time : Int32, drill_time : Int32, actions : Array(ActionType)
+  property pos, arm : Array(Point), fast_time, drill_time, actions
 
   def initialize(@pos : Point)
     @fast_time = @drill_time = 0
-    @arm = -1.upto(1).map { |dy| Point.new(@pos.x, @pos.y + dy) }.to_a
+    @arm = -1.upto(1).map { |dy| Point.new(1, dy) }.to_a
     @actions = [] of ActionType
+  end
+
+  def initialize(
+    @pos : Point, @arm : Array(Point), @fast_time : Int32, @drill_time : Int32, @actions : Array(ActionType)
+  )
+  end
+
+  def x
+    @pos.x
+  end
+
+  def y
+    @pos.y
+  end
+
+  def move(dx, dy, map)
+    move1(dx, dy, map)
+    move1(dx, dy, map) if @fast_time > 0
+  end
+
+  private def move1(dx, dy, map)
+    nx = @pos.x = dx
+    ny = @pos.y = dy
+    return if !map.inside(nx, ny)
+    return if map.wall[ny][nx] && @drill_time == 0
+    @pos.x += dx
+    @pos.y += dy
+    map.wall[ny][nx] = false if @drill_time > 0
+    map.cover(self)
+  end
+
+  def rot_cw(map)
+    @arm.size.times do |i|
+      @arm[i].x, @arm[i].y = @arm[i].y, -@arm[i].x
+    end
+    map.cover(self)
+  end
+
+  def rot_ccw(map)
+    @arm.size.times do |i|
+      @arm[i].x, @arm[i].y = -@arm[i].y, @arm[i].x
+    end
+    map.cover(self)
+  end
+
+  def clone
+    Bot.new(@pos, @arm.dup, @fast_time, @drill_time, @actions.dup)
   end
 
   def to_s(io : IO)
@@ -90,7 +310,7 @@ enum ActionSimple
 end
 
 abstract struct ActionWithCoord
-  property ch, x, y
+  getter x, y
 
   def initialize(@ch : Char, @x : Int32, @y : Int32)
   end
@@ -110,13 +330,13 @@ struct ActionB < ActionWithCoord
   end
 end
 
-struct ActionX < ActionWithCoord
+struct ActionT < ActionWithCoord
   def initialize(x : Int32, y : Int32)
-    super('X', x, y)
+    super('T', x, y)
   end
 end
 
-alias ActionType = ActionSimple | ActionB | ActionX
+alias ActionType = ActionSimple | ActionB | ActionT
 
 class InputParser
   def self.parse(input : String)
@@ -126,7 +346,7 @@ class InputParser
     obstacles_edge = parse_obsts(obstacles_str)
     wall = create_walls(map_edge, obstacles_edge)
     boosters = parse_boosters(boosters_str, wall.size, wall[0].size)
-    Map.new(wall, boosters, [Bot.new(init_pos)])
+    Map.new(wall, boosters, Bot.new(init_pos))
   end
 
   def self.parse_point(str)

@@ -5,12 +5,11 @@ def analyze(filename)
   STDERR << filename << "\n"
   taskname = /\/([^\/]+).desc\Z/.match(filename).not_nil![1]
   map = InputParser.parse(File.read("../data/" + filename))
-  empty_cell = map.wall.map { |row| row.count(false) }.sum
   bc = map.booster.values.group_by { |b| b }.transform_values { |v| v.size }
   DB.open "mysql://#{ENV["DB_USER"]}:#{ENV["DB_PASS"]}@#{ENV["DB_DOMAIN"]}/icfpc" do |db|
     db.exec(
       "insert into tasks values (#{(['?'] * 10).join(",")})",
-      taskname, map.h, map.w, empty_cell,
+      taskname, map.h, map.w, map.n_empty,
       bc.fetch(BoosterType::B, 0), bc.fetch(BoosterType::F, 0), bc.fetch(BoosterType::L, 0),
       bc.fetch(BoosterType::X, 0), bc.fetch(BoosterType::R, 0), bc.fetch(BoosterType::C, 0)
     )

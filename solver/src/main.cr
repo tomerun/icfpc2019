@@ -25,5 +25,5 @@ start_time = Time.now.to_unix_ms
 map = InputParser.parse(read_line)
 solver = Solver.new(map, start_time + ENV["TIMELIMIT"].to_i64)
 score, commands = solver.solve
-res = Result.new(ENV["TASKNAME"], score, commands.join("#"))
-res.upload
+res = Result.new(ENV["TASKNAME"], score, commands.map { |cs| cs.join }.join("#"))
+# res.upload
