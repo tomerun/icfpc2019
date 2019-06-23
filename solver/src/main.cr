@@ -31,5 +31,5 @@ commands.each do |cs|
 end
 res = Result.new(ENV["TASKNAME"], score, cmd_str.join("#"))
 # res = Result.new(ENV["TASKNAME"], score, commands.map { |cs| cs.join }.join("#"))
-puts res.commands
-# res.upload
+# puts res.commands
+res.upload

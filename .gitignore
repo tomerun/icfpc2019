@@ -2,3 +2,4 @@ aws/
 data/
 solver/bin/
 solver/lib/
+solver/log.txt
