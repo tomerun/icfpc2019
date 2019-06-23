@@ -133,6 +133,7 @@ class Solver
     orig_arm = bot.arm.dup
     wrapped = [] of Point
     booster_pos = [] of Point
+    score = 0
     begin
       actions.each_with_index do |action, i|
         rep = bot.fast_time > i && action != ActionSimple::E && action != ActionSimple::Q ? 2 : 1
@@ -164,14 +165,14 @@ class Solver
               bot.x -= 1
             end
           else
-            collect_wrapped(bot, map, wrapped)
+            score += collect_wrapped(bot, map, wrapped)
           end
         end
         if map.booster.has_key?(bot.pos) && !booster_pos.includes?(bot.pos)
           booster_pos << bot.pos
         end
       end
-      wrapped.size + booster_pos.size * 3
+      score += booster_pos.size * 50
     ensure
       wrapped.each do |p|
         map.wrapped[p.y][p.x] = false
@@ -182,18 +183,31 @@ class Solver
   end
 
   private def collect_wrapped(bot, map, wrapped)
+    score = 0
     bot.arm.each do |ap|
       x = bot.x + ap.x
       y = bot.y + ap.y
       if map.inside(x, y) && !map.wrapped[y][x] && map.visible(bot.x, bot.y, ap.x, ap.y)
         map.wrapped[y][x] = true
         wrapped << Point.new(x, y)
+        score += collect_score(map, x, y)
       end
     end
     if !map.wrapped[bot.y][bot.x]
       map.wrapped[bot.y][bot.x] = true
       wrapped << bot.pos
+      score += collect_score(map, bot.x, bot.y)
     end
+    score
+  end
+
+  private def collect_score(map, x, y)
+    neighbor = (4.times.count do |i|
+      nx = x + DX[i]
+      ny = y + DY[i]
+      map.inside(nx, ny) && !map.wrapped[ny][nx]
+    end)
+    (5 - neighbor) ** 2
   end
 
   private def create_plan(bot, map)
