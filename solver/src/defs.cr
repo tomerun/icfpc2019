@@ -40,8 +40,10 @@ class Map
   end
 
   def clone
+    new_wall = Array.new(h) { |i| @wall[i][0, w] }
+    new_wrapped = Array.new(h) { |i| @wrapped[i][0, w] }
     Map.new(
-      @wall.dup, @wrapped.dup, @booster.clone, @bots.clone, @beacons.dup, @n_empty,
+      new_wall, new_wrapped, @booster.clone, @bots.clone, @beacons.dup, @n_empty,
       @n_B, @n_F, @n_L, @n_R, @n_C
     )
   end
@@ -85,9 +87,11 @@ class Map
     when ActionSimple::D
       bot.move(1, 0, self)
     when ActionSimple::E
-      bot.rot_cw(self)
+      bot.rot_cw
+      wrap(bot)
     when ActionSimple::Q
-      bot.rot_ccw(self)
+      bot.rot_ccw
+      wrap(bot)
     when ActionSimple::F
       @n_F -= 1
       bot.fast_time = 50
@@ -136,7 +140,7 @@ class Map
   end
 
   def visible(bx, by, dx, dy)
-    return @wall[by + dy][bx + dx] if {dx.abs, dy.abs}.max <= 1
+    return !@wall[by + dy][bx + dx] if {dx.abs, dy.abs}.max <= 1
     if dx < 0
       bx += dx
       by += dy
@@ -237,16 +241,18 @@ struct Point
 end
 
 class Bot
-  property pos, arm : Array(Point), fast_time, drill_time, actions
+  property pos, arm : Array(Point), fast_time, drill_time, actions, plan
 
   def initialize(@pos : Point)
     @fast_time = @drill_time = 0
     @arm = -1.upto(1).map { |dy| Point.new(1, dy) }.to_a
     @actions = [] of ActionType
+    @plan = [] of ActionType
   end
 
   def initialize(
-    @pos : Point, @arm : Array(Point), @fast_time : Int32, @drill_time : Int32, @actions : Array(ActionType)
+    @pos : Point, @arm : Array(Point), @fast_time : Int32, @drill_time : Int32,
+    @actions : Array(ActionType), @plan : Array(ActionType)
   )
   end
 
@@ -254,8 +260,16 @@ class Bot
     @pos.x
   end
 
+  def x=(nx)
+    @pos.x = nx
+  end
+
   def y
     @pos.y
+  end
+
+  def y=(ny)
+    @pos.y = ny
   end
 
   def move(dx, dy, map)
@@ -264,8 +278,8 @@ class Bot
   end
 
   private def move1(dx, dy, map)
-    nx = @pos.x = dx
-    ny = @pos.y = dy
+    nx = x + dx
+    ny = y + dy
     return if !map.inside(nx, ny)
     return if map.wall[ny][nx] && @drill_time == 0
     @pos.x += dx
@@ -274,22 +288,20 @@ class Bot
     map.wrap(self)
   end
 
-  def rot_cw(map)
+  def rot_cw
     @arm.size.times do |i|
       @arm[i].x, @arm[i].y = @arm[i].y, -@arm[i].x
     end
-    map.wrap(self)
   end
 
-  def rot_ccw(map)
+  def rot_ccw
     @arm.size.times do |i|
       @arm[i].x, @arm[i].y = -@arm[i].y, @arm[i].x
     end
-    map.wrap(self)
   end
 
   def clone
-    Bot.new(@pos, @arm.dup, @fast_time, @drill_time, @actions.dup)
+    Bot.new(@pos, @arm.dup, @fast_time, @drill_time, @actions.dup, @plan.dup)
   end
 
   def to_s(io : IO)
