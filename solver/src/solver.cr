@@ -8,7 +8,7 @@ class Solver
 
   def initialize(@orig_map : Map, @tl : Int64)
     @map = @orig_map.clone
-    @rnd = Random.new(42)
+    @rnd = Random.new(334)
     @bbuf = BFSBuffer.new
     @simulate_types = [] of Array(ActionType)
     initialize_simulate_types
@@ -57,7 +57,7 @@ class Solver
       prev_time = cur_time
       turn += 1
     end
-    STDERR.puts("max_elapse:#{max_elapse}")
+    STDERR.puts("total turn:#{turn} max_elapse:#{max_elapse}")
     res
   end
 
