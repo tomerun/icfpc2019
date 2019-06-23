@@ -45,16 +45,19 @@ class Solver
     res = {Int32::MAX, [] of Array(ActionType)}
     max_elapse = 0i64
     prev_time = Time.now.to_unix_ms
+    turn = 1
     while prev_time + max_elapse < @tl
       score, commands = solve_single(res[0])
       if score < res[0]
         res = {score, commands}
+        STDERR.puts("turn:#{turn} score:#{score}")
       end
       cur_time = Time.now.to_unix_ms
-      STDERR.puts("time:#{cur_time - prev_time} score:#{score}")
       max_elapse = {max_elapse, cur_time - prev_time}.max
       prev_time = cur_time
+      turn += 1
     end
+    STDERR.puts("max_elapse:#{max_elapse}")
     res
   end
 
