@@ -321,37 +321,39 @@ class Solver
 
     best_time, best_pos = find_target(bot, map, dist_pos)
     rot = [] of ActionSimple
-    bot.rot_cw
-    time, pos = find_target(bot, map, dist_pos)
-    if time + 1 < best_time
-      best_time = time + 1
-      best_pos = pos
-      rot = [ActionSimple::E]
+    if bot.fast_time == 0 || min_dist < bot.fast_time - 2
+      bot.rot_cw
+      time, pos = find_target(bot, map, dist_pos)
+      if time + 1 < best_time
+        best_time = time + 1
+        best_pos = pos
+        rot = [ActionSimple::E]
+      end
+      bot.rot_cw
+      time, pos = find_target(bot, map, dist_pos)
+      if time + 2 < best_time
+        best_time = time + 2
+        best_pos = pos
+        rot = [ActionSimple::E, ActionSimple::E]
+      end
+      bot.rot_cw
+      time, pos = find_target(bot, map, dist_pos)
+      if time + 1 < best_time
+        best_time = time + 1
+        best_pos = pos
+        rot = [ActionSimple::Q]
+      end
+      bot.rot_cw
     end
-    bot.rot_cw
-    time, pos = find_target(bot, map, dist_pos)
-    if time + 2 < best_time
-      best_time = time + 2
-      best_pos = pos
-      rot = [ActionSimple::E, ActionSimple::E]
-    end
-    bot.rot_cw
-    time, pos = find_target(bot, map, dist_pos)
-    if time + 1 < best_time
-      best_time = time + 1
-      best_pos = pos
-      rot = [ActionSimple::Q]
-    end
-    bot.rot_cw
-    while pos != bot.pos
-      d = @bbuf.dir[pos.y][pos.x]
+    while best_pos != bot.pos
+      d = @bbuf.dir[best_pos.y][best_pos.x]
       if (d & MOVE_DOUBLE) != 0
         d -= MOVE_DOUBLE
-        pos.x = pos.x - DX[d] * 2
-        pos.y = pos.y - DY[d] * 2
+        best_pos.x = best_pos.x - DX[d] * 2
+        best_pos.y = best_pos.y - DY[d] * 2
       else
-        pos.x = pos.x - DX[d]
-        pos.y = pos.y - DY[d]
+        best_pos.x = best_pos.x - DX[d]
+        best_pos.y = best_pos.y - DY[d]
       end
       bot.plan << MOVE_ACTIONS[d]
     end
