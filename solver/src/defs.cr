@@ -5,12 +5,13 @@ DY           = {1, -1, 0, 0}
 MOVE_ACTIONS = {ActionSimple::W, ActionSimple::S, ActionSimple::A, ActionSimple::D}
 
 class Map
-  property wall, wrapped : Array(BitArray), booster, bots, beacons, n_empty : Int32
+  property wall, wrapped : Array(BitArray), booster, mystery, bots, beacons, n_empty : Int32
   property n_B, n_F, n_L, n_R, n_C
 
   def initialize(
     @wall : Array(BitArray),
     @booster : Hash(Point, BoosterType),
+    @mystery : Set(Point),
     bot : Bot
   )
     @bots = Array.new(1, bot)
@@ -32,6 +33,7 @@ class Map
     @wall : Array(BitArray),
     @wrapped : Array(BitArray),
     @booster : Hash(Point, BoosterType),
+    @mystery : Set(Point),
     @bots : Array(Bot),
     @beacons : Array(Point),
     @n_empty : Int32,
@@ -47,7 +49,7 @@ class Map
     new_wall = Array.new(h) { |i| @wall[i][0, w] }
     new_wrapped = Array.new(h) { |i| @wrapped[i][0, w] }
     Map.new(
-      new_wall, new_wrapped, @booster.clone, @bots.clone, @beacons.dup, @n_empty,
+      new_wall, new_wrapped, @booster.clone, @mystery.dup, @bots.clone, @beacons.dup, @n_empty,
       @n_B, @n_F, @n_L, @n_R, @n_C
     )
   end
@@ -62,7 +64,7 @@ class Map
 
   def get_booster(bot)
     b = @booster.fetch(bot.pos, nil)
-    if b && b != BoosterType::X
+    if b
       @booster.delete(bot.pos)
       case b
       when BoosterType::B
@@ -362,8 +364,8 @@ class InputParser
     init_pos = parse_point(point_str)
     obstacles_edge = parse_obsts(obstacles_str)
     wall = create_walls(map_edge, obstacles_edge)
-    boosters = parse_boosters(boosters_str, wall.size, wall[0].size)
-    Map.new(wall, boosters, Bot.new(init_pos))
+    boosters, mysteries = parse_boosters(boosters_str, wall.size, wall[0].size)
+    Map.new(wall, boosters, mysteries, Bot.new(init_pos))
   end
 
   def self.parse_point(str)
@@ -382,27 +384,30 @@ class InputParser
 
   def self.parse_boosters(str, h, w)
     bs = Hash(Point, BoosterType).new
+    ms = Set(Point).new
     if !str.empty?
       str.split(";").each do |s|
         p = parse_point(s[1..])
-        t = case s[0]
-            when 'B'
-              BoosterType::B
-            when 'F'
-              BoosterType::F
-            when 'L'
-              BoosterType::L
-            when 'X'
-              BoosterType::X
-            when 'R'
-              BoosterType::R
-            when 'C'
-              BoosterType::C
-            end
-        bs[p] = t if t
+        if s[0] == 'X'
+          ms << p
+        else
+          t = case s[0]
+              when 'B'
+                BoosterType::B
+              when 'F'
+                BoosterType::F
+              when 'L'
+                BoosterType::L
+              when 'R'
+                BoosterType::R
+              when 'C'
+                BoosterType::C
+              end
+          bs[p] = t if t
+        end
       end
     end
-    bs
+    {bs, ms}
   end
 
   def self.create_walls(map_edge, obstacles_edge)

@@ -132,6 +132,7 @@ class Solver
     orig_pos = bot.pos
     orig_arm = bot.arm.dup
     wrapped = [] of Point
+    booster_pos = [] of Point
     begin
       actions.each_with_index do |action, i|
         rep = bot.fast_time > i && action != ActionSimple::E && action != ActionSimple::Q ? 2 : 1
@@ -166,8 +167,11 @@ class Solver
             collect_wrapped(bot, map, wrapped)
           end
         end
+        if map.booster.has_key?(bot.pos) && !booster_pos.includes?(bot.pos)
+          booster_pos << bot.pos
+        end
       end
-      wrapped.size
+      wrapped.size + booster_pos.size * 3
     ensure
       wrapped.each do |p|
         map.wrapped[p.y][p.x] = false
@@ -200,6 +204,7 @@ class Solver
     min_dist = 9999
     0.upto(9999) do |dist|
       cpos = [] of Point
+      cpos_prior = [] of Point
       que.each do |cp|
         if dist < bot.fast_time
           4.times do |i|
@@ -217,7 +222,12 @@ class Solver
             next if @bbuf.get(nx, ny)
             @bbuf.set(nx, ny)
             @bbuf.dir[ny][nx] = i | mv2
-            cpos << Point.new(nx, ny)
+            np = Point.new(nx, ny)
+            if map.booster.has_key?(np)
+              cpos_prior << np
+            else
+              cpos << np
+            end
             if min_dist == 9999 && !map.wrapped[ny][nx]
               min_dist = dist
             end
@@ -229,13 +239,19 @@ class Solver
             next if !map.inside(nx, ny) || map.wall[ny][nx] || @bbuf.get(nx, ny)
             @bbuf.set(nx, ny)
             @bbuf.dir[ny][nx] = i
-            cpos << Point.new(nx, ny)
+            np = Point.new(nx, ny)
+            if map.booster.has_key?(np)
+              cpos_prior << np
+            else
+              cpos << np
+            end
             if min_dist == 9999 && !map.wrapped[ny][nx]
               min_dist = dist
             end
           end
         end
       end
+      cpos = cpos_prior + cpos
       break if dist > min_dist + 3 || cpos.empty?
       dist_pos << cpos
       que = cpos
