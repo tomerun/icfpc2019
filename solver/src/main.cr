@@ -25,7 +25,11 @@ start_time = Time.now.to_unix_ms
 map = InputParser.parse(read_line)
 solver = Solver.new(map, start_time + ENV["TIMELIMIT"].to_i64)
 score, commands = solver.solve
-puts typeof(commands)
+cmd_str = [] of String
+commands.each do |cs|
+  cmd_str << cs.join
+end
+res = Result.new(ENV["TASKNAME"], score, cmd_str.join("#"))
 # res = Result.new(ENV["TASKNAME"], score, commands.map { |cs| cs.join }.join("#"))
-# puts res
+puts res.commands
 # res.upload

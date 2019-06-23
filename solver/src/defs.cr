@@ -1,5 +1,9 @@
 require "bit_array"
 
+DX           = {0, 0, -1, 1}
+DY           = {1, -1, 0, 0}
+MOVE_ACTIONS = {ActionSimple::W, ActionSimple::S, ActionSimple::A, ActionSimple::D}
+
 class Map
   property wall, wrapped : Array(BitArray), booster, bots, beacons, n_empty : Int32
   property n_B, n_F, n_L, n_R, n_C
@@ -10,7 +14,7 @@ class Map
     bot : Bot
   )
     @bots = Array.new(1, bot)
-    @wrapped = Array.new(@wall.size) { BitArray.new(@wall[0].size) }
+    @wrapped = Array.new(@wall.size) { |i| wall[i][0, w] }
     @wrapped[bot.y][bot.x] = true
     bot.arm.each do |ap|
       ax = bot.x + ap.x
@@ -20,7 +24,7 @@ class Map
       end
     end
     @beacons = Array(Point).new
-    @n_empty = @wall.map { |row| row.count(false) }.sum
+    @n_empty = @wrapped.map { |row| row.count(false) }.sum
     @n_B = @n_F = @n_L = @n_R = @n_C = 0
   end
 
@@ -290,13 +294,13 @@ class Bot
 
   def rot_cw
     @arm.size.times do |i|
-      @arm[i].x, @arm[i].y = @arm[i].y, -@arm[i].x
+      @arm[i] = Point.new(@arm[i].y, -@arm[i].x)
     end
   end
 
   def rot_ccw
     @arm.size.times do |i|
-      @arm[i].x, @arm[i].y = -@arm[i].y, @arm[i].x
+      @arm[i] = Point.new(-@arm[i].y, @arm[i].x)
     end
   end
 

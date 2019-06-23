@@ -10,13 +10,12 @@ class Solver
     @map = @orig_map.clone
     @rnd = Random.new(42)
     @bbuf = BFSBuffer.new
-    @apbuf = [] of Point
     @simulate_types = [] of Array(ActionType)
     initialize_simulate_types
   end
 
   def initialize_simulate_types
-    # @simulate_types << {ActionSimple::W, ActionSimple::W, ActionSimple::W}
+    # @simulate_types << [ActionSimple::W, ActionSimple::W, ActionSimple::W]
     types = {ActionSimple::W, ActionSimple::S, ActionSimple::A, ActionSimple::D, ActionSimple::E, ActionSimple::Q}
     actions = Array.new(3, ActionSimple::Z)
     initialize_simulate_types_rec(actions, 0, types)
@@ -61,20 +60,19 @@ class Solver
 
   private def solve_single : Tuple(Int32, Array(Array(ActionType)))
     @map = @orig_map.clone
-    @map.wrapped[3][0] = true
     time = 0
     next_spawn = [] of Bot
-    puts @map.bots[0]
-    while @map.n_empty > 10
+    # puts @map.n_empty
+    while @map.n_empty > 0
       time += 1
       @map.bots.each do |bot|
         @map.get_booster(bot)
         action = select_action(bot, @map)
         @map.apply_action(action, bot, next_spawn)
-        puts action
-        puts bot
+        # puts "action:#{action}"
       end
-      puts @map.n_empty
+      # puts "time:#{time}"
+      # puts @map
       @map.finalize_turn(next_spawn)
     end
     commands = @map.bots.map { |bot| bot.actions }
@@ -82,6 +80,7 @@ class Solver
   end
 
   private def select_action(bot, map) : ActionType
+    # puts "pre plan:#{bot.plan}"
     return ActionSimple::Z if map.n_empty == 0
     if map.n_B > 0
       bot.plan.clear
@@ -93,19 +92,23 @@ class Solver
     else
       cur_wrapped = bot.plan.empty? ? 0 : simulate(bot, map, bot.plan.reverse)
       max_wrapped = 0
-      max_actions = [] of ActionType
+      max_actions = [] of Array(ActionType)
       @simulate_types.each do |actions|
         n = simulate(bot, map, actions)
         if n > max_wrapped
           max_wrapped = n
-          max_actions = actions
-          puts "#{n} #{max_actions}"
+          max_actions.clear
+          max_actions << actions
+          # puts "#{n} #{max_actions}"
+        elsif n > 0 && n == max_wrapped
+          max_actions << actions
         end
       end
       if max_wrapped > cur_wrapped
-        puts "max_wrapped:#{max_wrapped} #{max_actions}"
-        bot.plan << max_actions[2] << max_actions[1]
-        return max_actions[0]
+        use_actions = max_actions.sample(@rnd)
+        bot.plan.clear
+        bot.plan << use_actions[2] << use_actions[1]
+        return use_actions[0]
       end
       if bot.plan.empty?
         create_plan(bot, map)
@@ -117,7 +120,7 @@ class Solver
 
   private def simulate(bot, map, actions)
     orig_pos = bot.pos
-    orig_arm = bot.arm
+    orig_arm = bot.arm.dup
     wrapped = [] of Point
     begin
       actions.each do |action|
@@ -166,105 +169,99 @@ class Solver
   end
 
   private def create_plan(bot, map)
-    cands = [] of ActionType
-    cands << ActionSimple::W if map.inside(bot.x, bot.y + 1)
-    cands << ActionSimple::S if map.inside(bot.x, bot.y - 1)
-    cands << ActionSimple::A if map.inside(bot.x - 1, bot.y)
-    cands << ActionSimple::D if map.inside(bot.x + 1, bot.y)
-    bot.plan << cands.sample(@rnd)
-    puts "plan:#{bot.plan[0]}"
-  end
-
-  private def evaluate_W(bot, map)
-    {ActionSimple::W, evaluate_move(bot, map, 0, 1)}
-  end
-
-  private def evaluate_S(bot, map)
-    {ActionSimple::S, evaluate_move(bot, map, 0, -1)}
-  end
-
-  private def evaluate_A(bot, map)
-    {ActionSimple::A, evaluate_move(bot, map, -1, 0)}
-  end
-
-  private def evaluate_D(bot, map)
-    {ActionSimple::D, evaluate_move(bot, map, 1, 0)}
-  end
-
-  private def evaluate_move(bot, map, dx, dy)
-    nx = bot.x + dx
-    ny = bot.y + dy
-    return 0.0 if !map.inside(nx, ny) || map.wall[ny][nx]
-    if bot.fast_time > 0 &&
-       map.inside(nx + dx, ny + dy) &&
-       !map.wall[ny + dx][nx + dy]
-      evaluate_move2(bot, map, dx, dy)
-    else
-    end
-  end
-
-  private def evaluate_move2(bot, map, dx, dy)
-    nx = bot.x + dx
-    ny = bot.y + dy
-    wrapped = [] of Point
-    begin
-      bot.arm.each do |p|
-        if map.inside(nx + p.x, ny + p.y) &&
-           !map.wrapped[ny + p.y][nx + p.x] &&
-           map.visible(nx, ny, p.x, p.y)
-          map.wrapped[ny + p.y][nx + p.x] = true
-          wrapped << Point.new(nx + p.x, ny + p.y)
+    # TODO: consider F and L
+    @bbuf.next
+    dist_pos = Array(Array(Point)).new
+    que = [bot.pos]
+    min_dist = 9999
+    1.upto(9999) do |dist|
+      cpos = [] of Point
+      que.each do |cp|
+        4.times do |i|
+          nx = cp.x + DX[i]
+          ny = cp.y + DY[i]
+          next if !map.inside(nx, ny) || map.wall[ny][nx] || @bbuf.get(nx, ny)
+          @bbuf.set(nx, ny)
+          @bbuf.dir[ny][nx] = i
+          cpos << Point.new(nx, ny)
+          if min_dist == 9999 && !map.wrapped[ny][nx]
+            min_dist = dist
+          end
         end
       end
-      if !map.wrapped[ny][nx]
-        map.wrapped[ny][nx] = true
-        wrapped << Point.new(nx, ny)
-      end
-      nx += dx
-      ny += dy
-      bot.arm.each do |p|
-        if map.inside(nx + p.x, ny + p.y) &&
-           !map.wrapped[ny + p.y][nx + p.x] &&
-           map.visible(nx, ny, p.x, p.y)
-          map.wrapped[ny + p.y][nx + p.x] = true
-          wrapped << Point.new(nx + p.x, ny + p.y)
+      break if dist > min_dist + 2 || cpos.empty?
+      dist_pos << cpos
+      que = cpos
+    end
+    if min_dist == 9999
+      raise "cannot find wrap pos"
+    end
+
+    best_time, best_pos = find_target(bot, map, dist_pos)
+    rot = [] of ActionSimple
+    bot.rot_cw
+    time, pos = find_target(bot, map, dist_pos)
+    if time + 1 < best_time
+      best_time = time + 1
+      best_pos = pos
+      rot = [ActionSimple::E]
+    end
+    bot.rot_cw
+    time, pos = find_target(bot, map, dist_pos)
+    if time + 2 < best_time
+      best_time = time + 2
+      best_pos = pos
+      rot = [ActionSimple::E, ActionSimple::E]
+    end
+    bot.rot_cw
+    time, pos = find_target(bot, map, dist_pos)
+    if time + 1 < best_time
+      best_time = time + 1
+      best_pos = pos
+      rot = [ActionSimple::Q]
+    end
+    bot.rot_cw
+    while pos != bot.pos
+      d = @bbuf.dir[pos.y][pos.x]
+      pos.x = pos.x - DX[d]
+      pos.y = pos.y - DY[d]
+      bot.plan << MOVE_ACTIONS[d]
+    end
+    bot.plan.concat(rot.reverse)
+    # puts "plan:#{bot.plan}"
+  end
+
+  private def find_target(bot, map, dist_pos)
+    dist_pos.each_with_index do |dist_p, i|
+      max_n = 0
+      max_pos = bot.pos
+      dist_p.each do |bp|
+        n = map.wrapped[bp.y][bp.x] ? 0 : 1
+        bot.arm.each do |ap|
+          nx = bp.x + ap.x
+          ny = bp.y + ap.y
+          if map.inside(nx, ny) && !map.wrapped[ny][nx] && map.visible(bp.x, bp.y, ap.x, ap.y)
+            n += 1
+          end
+        end
+        if n > max_n
+          max_n = n
+          max_pos = bp
         end
       end
-      if !map.wrapped[ny][nx]
-        map.wrapped[ny][nx] = true
-        wrapped << Point.new(nx, ny)
-      end
-      return @@WRAP_SCORE * wrapped.size * 100 if map.n_empty == wrapped.size
-
-      score = @@WRAP_SCORE * wrapped.size
-      dist = distance(bot, map)
-      score
-    ensure
-      wrapped.each do |p|
-        map.wrapped[p.y][p.x] = false
+      if max_n > 0
+        return {i + 1, max_pos}
       end
     end
-  end
-
-  private def distance(bot, map)
-    # @bbuf.gen += 1
-    # @bbuf.set(nx, ny)
-    # @apbuf.clear
-    # @apbuf << Point.new(nx, ny)
-  end
-
-  private def evaluate_E(bot, map)
-  end
-
-  private def evaluate_Q(bot, map)
+    {9999, bot.pos}
   end
 
   private def select_arm(bot, map)
     s = Set(Point).new
-    s << Point.new(bot.x, bot.y + 1)
-    s << Point.new(bot.x, bot.y - 1)
-    s << Point.new(bot.x + 1, bot.y)
-    s << Point.new(bot.x - 1, bot.y)
+    s << Point.new(0, +1)
+    s << Point.new(0, -1)
+    s << Point.new(1, 0)
+    s << Point.new(-1, 0)
     bot.arm.each do |p|
       s << Point.new(p.x, p.y + 1)
       s << Point.new(p.x, p.y - 1)
@@ -285,16 +282,22 @@ class Solver
 end
 
 class BFSBuffer
-  property idx, gen
+  property idx, dir, gen
 
   def initialize
     @idx = Array(Array(Int32)).new
+    @dir = Array(Array(Int32)).new
     @gen = 0
   end
 
   def init(h, w)
     @idx = Array.new(h) { Array(Int32).new(w, 0) }
+    @dir = Array.new(h) { Array(Int32).new(w, 0) }
     @gen = 0
+  end
+
+  def next
+    @gen += 1
   end
 
   def set(x, y)
@@ -303,12 +306,5 @@ class BFSBuffer
 
   def get(x, y)
     @idx[y][x] == @gen
-  end
-end
-
-struct ActionEval
-  getter act, score
-
-  def initialize(@act : ActionType, @score : Float64)
   end
 end
