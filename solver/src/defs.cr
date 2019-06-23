@@ -211,7 +211,7 @@ class Map
   end
 
   def to_s(io : IO)
-    io << "wall\n"
+    io << "n_empty:#{n_empty}\nwall\n"
     field = Array.new(h) { |i| Array.new(w) { |j| @wall[i][j] ? '#' : @wrapped[i][j] ? '.' : '_' } }
     @bots.each { |bot| field[bot.y][bot.x] = '@' }
     field.reverse_each { |row| io << row.join << "\n" }

@@ -7,6 +7,7 @@ MOVE_DOUBLE = (1 << 4)
 
 class Solver
   @map : Map
+  @empty_dists : Array(Array(Int32)) | Nil
 
   def initialize(@orig_map : Map, @tl : Int64)
     @map = @orig_map.clone
@@ -65,9 +66,9 @@ class Solver
 
   private def solve_single(best_result) : Tuple(Int32, Array(Array(ActionType)))
     @map = @orig_map.clone
+    @empty_dists = nil
     time = 0
     next_spawn = [] of Bot
-    # puts @map.n_empty
     while @map.n_empty > 0
       time += 1
       if time == best_result # prune
@@ -240,7 +241,52 @@ class Solver
       que = cpos
     end
     if min_dist == 9999
-      raise "cannot find wrap pos"
+      raise "cannot find wrap pos" if bot.fast_time == 0
+      if @empty_dists == nil
+        ed = Array.new(map.h) { Array.new(map.w, 9999) }
+        que = [] of Point
+        map.h.times do |i|
+          map.w.times do |j|
+            if !map.wrapped[i][j]
+              que << Point.new(j, i)
+              ed[i][j] = 0
+            end
+          end
+        end
+        dist = 1
+        while !que.empty?
+          nq = [] of Point
+          que.each do |p|
+            4.times do |i|
+              nx = p.x + DX[i]
+              ny = p.y + DY[i]
+              if map.inside(nx, ny) && !map.wall[ny][nx] && ed[ny][nx] == 9999
+                nq << Point.new(nx, ny)
+                ed[ny][nx] = dist
+              end
+            end
+          end
+          dist += 1
+          que = nq
+        end
+        @empty_dists = ed
+      end
+      ed = @empty_dists.not_nil!
+      dir = 0.upto(3).min_of do |i|
+        nx = bot.x + DX[i]
+        ny = bot.y + DY[i]
+        if map.inside(nx, ny) && !map.wall[ny][nx]
+          {ed[ny][nx], i}
+        else
+          {9999, i}
+        end
+      end
+      if dir[0] < ed[bot.y][bot.x]
+        bot.plan << ActionSimple::Z
+      else
+        bot.plan << {ActionSimple::W, ActionSimple::S, ActionSimple::A, ActionSimple::D}[dir[1]]
+      end
+      return
     end
 
     best_time, best_pos = find_target(bot, map, dist_pos)
