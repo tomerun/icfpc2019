@@ -1,9 +1,11 @@
 require "random"
 require "./defs"
 
+WRAP_SCORE  = 10000.0
+NEAR_SCORE  =  1000.0
+MOVE_DOUBLE = (1 << 4)
+
 class Solver
-  @@WRAP_SCORE = 10000.0
-  @@NEAR_SCORE = 1000.0
   @map : Map
 
   def initialize(@orig_map : Map, @tl : Int64)
@@ -91,8 +93,9 @@ class Solver
     if map.n_B > 0
       bot.plan.clear
       return select_arm(bot, map)
-      # elsif map.n_F > 0 && bot.fast_time == 0
-      #   ActionSimple::F
+    elsif map.n_F > 0 && bot.fast_time == 0
+      bot.plan.clear
+      return ActionSimple::F
     elsif bot.plan.size >= 3
       return bot.plan.pop
     else
@@ -129,25 +132,39 @@ class Solver
     orig_arm = bot.arm.dup
     wrapped = [] of Point
     begin
-      actions.each do |action|
-        case action
-        when ActionSimple::W
-          bot.y += 1
-        when ActionSimple::S
-          bot.y -= 1
-        when ActionSimple::A
-          bot.x -= 1
-        when ActionSimple::D
-          bot.x += 1
-        when ActionSimple::E
-          bot.rot_cw
-        when ActionSimple::Q
-          bot.rot_ccw
+      actions.each_with_index do |action, i|
+        rep = bot.fast_time > i && action != ActionSimple::E && action != ActionSimple::Q ? 2 : 1
+        rep.times do |j|
+          case action
+          when ActionSimple::W
+            bot.y += 1
+          when ActionSimple::S
+            bot.y -= 1
+          when ActionSimple::A
+            bot.x -= 1
+          when ActionSimple::D
+            bot.x += 1
+          when ActionSimple::E
+            bot.rot_cw
+          when ActionSimple::Q
+            bot.rot_ccw
+          end
+          if !map.inside(bot.x, bot.y) || map.wall[bot.y][bot.x]
+            return 0 if j == 0
+            case action
+            when ActionSimple::W
+              bot.y -= 1
+            when ActionSimple::S
+              bot.y += 1
+            when ActionSimple::A
+              bot.x += 1
+            when ActionSimple::D
+              bot.x -= 1
+            end
+          else
+            collect_wrapped(bot, map, wrapped)
+          end
         end
-        if !map.inside(bot.x, bot.y) || map.wall[bot.y][bot.x]
-          return 0
-        end
-        collect_wrapped(bot, map, wrapped)
       end
       wrapped.size
     ensure
@@ -175,27 +192,50 @@ class Solver
   end
 
   private def create_plan(bot, map)
-    # TODO: consider F and L
+    # TODO: consider L, T and other bots
     @bbuf.next
     dist_pos = Array(Array(Point)).new
     que = [bot.pos]
     min_dist = 9999
-    1.upto(9999) do |dist|
+    0.upto(9999) do |dist|
       cpos = [] of Point
       que.each do |cp|
-        4.times do |i|
-          nx = cp.x + DX[i]
-          ny = cp.y + DY[i]
-          next if !map.inside(nx, ny) || map.wall[ny][nx] || @bbuf.get(nx, ny)
-          @bbuf.set(nx, ny)
-          @bbuf.dir[ny][nx] = i
-          cpos << Point.new(nx, ny)
-          if min_dist == 9999 && !map.wrapped[ny][nx]
-            min_dist = dist
+        if dist < bot.fast_time
+          4.times do |i|
+            nx = cp.x + DX[i]
+            ny = cp.y + DY[i]
+            next if !map.inside(nx, ny) || map.wall[ny][nx]
+            nx += DX[i]
+            ny += DY[i]
+            mv2 = MOVE_DOUBLE
+            if !map.inside(nx, ny) || map.wall[ny][nx]
+              nx -= DX[i]
+              ny -= DY[i]
+              mv2 = 0
+            end
+            next if @bbuf.get(nx, ny)
+            @bbuf.set(nx, ny)
+            @bbuf.dir[ny][nx] = i | mv2
+            cpos << Point.new(nx, ny)
+            if min_dist == 9999 && !map.wrapped[ny][nx]
+              min_dist = dist
+            end
+          end
+        else
+          4.times do |i|
+            nx = cp.x + DX[i]
+            ny = cp.y + DY[i]
+            next if !map.inside(nx, ny) || map.wall[ny][nx] || @bbuf.get(nx, ny)
+            @bbuf.set(nx, ny)
+            @bbuf.dir[ny][nx] = i
+            cpos << Point.new(nx, ny)
+            if min_dist == 9999 && !map.wrapped[ny][nx]
+              min_dist = dist
+            end
           end
         end
       end
-      break if dist > min_dist + 2 || cpos.empty?
+      break if dist > min_dist + 3 || cpos.empty?
       dist_pos << cpos
       que = cpos
     end
@@ -229,8 +269,14 @@ class Solver
     bot.rot_cw
     while pos != bot.pos
       d = @bbuf.dir[pos.y][pos.x]
-      pos.x = pos.x - DX[d]
-      pos.y = pos.y - DY[d]
+      if (d & MOVE_DOUBLE) != 0
+        d -= MOVE_DOUBLE
+        pos.x = pos.x - DX[d] * 2
+        pos.y = pos.y - DY[d] * 2
+      else
+        pos.x = pos.x - DX[d]
+        pos.y = pos.y - DY[d]
+      end
       bot.plan << MOVE_ACTIONS[d]
     end
     bot.plan.concat(rot.reverse)

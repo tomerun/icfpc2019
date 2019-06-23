@@ -98,10 +98,10 @@ class Map
       wrap(bot)
     when ActionSimple::F
       @n_F -= 1
-      bot.fast_time = 50
+      bot.fast_time = 51
     when ActionSimple::L
       @n_L -= 1
-      bot.drill_time = 30
+      bot.drill_time = 31
     when ActionSimple::R
       @n_R -= 1
       @beacons << bot.pos
@@ -213,6 +213,7 @@ class Map
   def to_s(io : IO)
     io << "wall\n"
     field = Array.new(h) { |i| Array.new(w) { |j| @wall[i][j] ? '#' : @wrapped[i][j] ? '.' : '_' } }
+    @bots.each { |bot| field[bot.y][bot.x] = '@' }
     field.reverse_each { |row| io << row.join << "\n" }
     io << booster << "\nbots\n"
     @bots.each { |bot| io << bot << "\n" }
