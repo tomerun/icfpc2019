@@ -46,7 +46,7 @@ class Solver
     max_elapse = 0i64
     prev_time = Time.now.to_unix_ms
     while prev_time + max_elapse < @tl
-      score, commands = solve_single
+      score, commands = solve_single(res[0])
       if score < res[0]
         res = {score, commands}
       end
@@ -58,13 +58,16 @@ class Solver
     res
   end
 
-  private def solve_single : Tuple(Int32, Array(Array(ActionType)))
+  private def solve_single(best_result) : Tuple(Int32, Array(Array(ActionType)))
     @map = @orig_map.clone
     time = 0
     next_spawn = [] of Bot
     # puts @map.n_empty
     while @map.n_empty > 0
       time += 1
+      if time == best_result # prune
+        return {best_result, [] of Array(ActionType)}
+      end
       @map.bots.each do |bot|
         @map.get_booster(bot)
         action = select_action(bot, @map)
