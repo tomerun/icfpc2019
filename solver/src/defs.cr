@@ -1,7 +1,7 @@
 require "bit_array"
 
 class Map
-  property wall, covered : Array(BitArray), booster, bots, beacons, n_empty : Int32
+  property wall, wrapped : Array(BitArray), booster, bots, beacons, n_empty : Int32
   property n_B, n_F, n_L, n_R, n_C
 
   def initialize(
@@ -10,13 +10,13 @@ class Map
     bot : Bot
   )
     @bots = Array.new(1, bot)
-    @covered = Array.new(@wall.size) { BitArray.new(@wall[0].size) }
-    @covered[bot.y][bot.x] = true
+    @wrapped = Array.new(@wall.size) { BitArray.new(@wall[0].size) }
+    @wrapped[bot.y][bot.x] = true
     bot.arm.each do |ap|
       ax = bot.x + ap.x
       ay = bot.y + ap.y
       if 0 <= ax && ax < w && 0 <= ay && ay < h
-        @covered[ay][ax] = true
+        @wrapped[ay][ax] = true
       end
     end
     @beacons = Array(Point).new
@@ -26,7 +26,7 @@ class Map
 
   def initialize(
     @wall : Array(BitArray),
-    @covered : Array(BitArray),
+    @wrapped : Array(BitArray),
     @booster : Hash(Point, BoosterType),
     @bots : Array(Bot),
     @beacons : Array(Point),
@@ -41,7 +41,7 @@ class Map
 
   def clone
     Map.new(
-      @wall.dup, @covered.dup, @booster.clone, @bots.clone, @beacons.dup, @n_empty,
+      @wall.dup, @wrapped.dup, @booster.clone, @bots.clone, @beacons.dup, @n_empty,
       @n_B, @n_F, @n_L, @n_R, @n_C
     )
   end
@@ -103,35 +103,35 @@ class Map
     when ActionB
       @n_B -= 1
       bot.arm << Point.new(action.x, action.y)
-      cover(bot.x, bot.y, action.x, action.y)
+      wrap(bot.x, bot.y, action.x, action.y)
     when ActionT
       bot.pos.x = action.x
       bot.pos.y = action.y
-      cover(bot)
+      wrap(bot)
     end
     bot.fast_time -= 1 if bot.fast_time > 0
     bot.drill_time -= 1 if bot.drill_time > 0
   end
 
-  def cover(bot)
+  def wrap(bot)
     bot.arm.each do |ap|
-      cover(bot.x, bot.y, ap.x, ap.y)
+      wrap(bot.x, bot.y, ap.x, ap.y)
     end
-    cover(bot.x, bot.y, 0, 0)
+    wrap(bot.x, bot.y, 0, 0)
   end
 
-  def cover(bx, by, dx, dy)
+  def wrap(bx, by, dx, dy)
     x = bx + dx
     y = by + dy
-    if inside(x, y) && !@covered[y][x] && visible(bx, by, dx, dy)
-      @covered[y][x] = true
+    if inside(x, y) && !@wrapped[y][x] && visible(bx, by, dx, dy)
+      @wrapped[y][x] = true
       @n_empty -= 1
     end
   end
 
   def finalize_turn(next_spawn)
     @bots.concat(next_spawn)
-    next_spawn.each { |b| cover(b) }
+    next_spawn.each { |b| wrap(b) }
     next_spawn.clear
   end
 
@@ -204,7 +204,7 @@ class Map
 
   def to_s(io : IO)
     io << "wall\n"
-    field = Array.new(h) { |i| Array.new(w) { |j| @wall[i][j] ? '#' : @covered[i][j] ? '.' : '_' } }
+    field = Array.new(h) { |i| Array.new(w) { |j| @wall[i][j] ? '#' : @wrapped[i][j] ? '.' : '_' } }
     field.reverse_each { |row| io << row.join << "\n" }
     io << booster << "\nbots\n"
     @bots.each { |bot| io << bot << "\n" }
@@ -271,21 +271,21 @@ class Bot
     @pos.x += dx
     @pos.y += dy
     map.wall[ny][nx] = false if @drill_time > 0
-    map.cover(self)
+    map.wrap(self)
   end
 
   def rot_cw(map)
     @arm.size.times do |i|
       @arm[i].x, @arm[i].y = @arm[i].y, -@arm[i].x
     end
-    map.cover(self)
+    map.wrap(self)
   end
 
   def rot_ccw(map)
     @arm.size.times do |i|
       @arm[i].x, @arm[i].y = -@arm[i].y, @arm[i].x
     end
-    map.cover(self)
+    map.wrap(self)
   end
 
   def clone
