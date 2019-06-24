@@ -480,7 +480,8 @@ class Solver
       end
     end
     any = false
-    max_que_size = 10
+    max_que_size = (map.n_empty + 19) / 20
+    max_len = (map.h + map.w) / 10
     b.upto(t) do |i|
       l.upto(r) do |j|
         next if @wrap_score[i][j] != -1
@@ -489,18 +490,33 @@ class Solver
         any = true
         que = [Point.new(j, i)]
         idx = 0
-        while idx < que.size && que.size < max_que_size
+        score = SMALL_GROUP
+        while idx < que.size && que.size < max_que_size && score == SMALL_GROUP
           cur = que[idx]
           4.times do |k|
             nx = cur.x + DX[k]
             ny = cur.y + DY[k]
-            next if !map.inside(nx, ny) || map.wrapped[ny][nx] || @bbuf.get(nx, ny)
-            que << Point.new(nx, ny)
+            next if !map.inside(nx, ny) || map.wrapped[ny][nx]
+            if @bbuf.get(nx, ny)
+              if l <= nx && nx <= r && b <= ny && ny <= t && @wrap_score[ny][nx] == 1
+                score = 1
+                break
+              else
+                next
+              end
+            end
             @bbuf.set(nx, ny)
+            if nx < bot.x - max_len || bot.x + max_len < nx || ny < bot.y - max_len || bot.y + max_len < ny
+              score = 1
+              break
+            end
+            que << Point.new(nx, ny)
           end
           idx += 1
         end
-        score = que.size >= max_que_size ? 1 : SMALL_GROUP
+        if que.size >= max_que_size
+          score = 1
+        end
         que.each do |p|
           @wrap_score[p.y][p.x] = score
         end
