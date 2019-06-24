@@ -15,7 +15,7 @@ class Solver
 
   def initialize(@orig_map : Map, @tl : Int64)
     @map = @orig_map.clone
-    @rnd = Random.new(42)
+    @rnd = Random.new(575)
     @bbuf = BFSBuffer.new
     @simulate_types = [] of Array(ActionType)
     @max_search_base_dist = ((@map.h + @map.w) * 0.2).to_i
@@ -75,10 +75,14 @@ class Solver
     prev_time = Time.now.to_unix_ms
     turn = 1
     while prev_time + max_elapse < @tl
-      score, commands = solve_single(res[0])
-      if score < res[0]
-        res = {score, commands}
-        STDERR.puts("turn:#{turn} score:#{score}")
+      begin
+        score, commands = solve_single(res[0])
+        if score < res[0]
+          res = {score, commands}
+          STDERR.puts("turn:#{turn} score:#{score}")
+        end
+      rescue e : Exception
+        puts e
       end
       cur_time = Time.now.to_unix_ms
       max_elapse = {max_elapse, cur_time - prev_time}.max
@@ -624,7 +628,7 @@ class Solver
       end
     end
     any = false
-    max_que_size = (map.n_empty + 19) / 20
+    max_que_size = 5 # (map.n_empty + 19) / 20
     max_len = (map.h + map.w) / 10
     b.upto(t) do |i|
       l.upto(r) do |j|
