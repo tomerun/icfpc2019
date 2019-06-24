@@ -170,7 +170,7 @@ class Solver
           when ActionSimple::Q
             bot.rot_ccw
           end
-          if !map.inside(bot.x, bot.y) || map.wall[bot.y][bot.x]
+          if !map.inside(bot.x, bot.y) || (bot.drill_time <= i && map.wall[bot.y][bot.x])
             return 0 if j == 0
             case action
             when ActionSimple::W
@@ -222,6 +222,7 @@ class Solver
   private def create_plan(bot, map)
     # TODO: consider L, T and other bots
     @bbuf.next
+    @bbuf.set(bot.x, bot.y)
     dist_pos = Array(Array(Point)).new
     que = [bot.pos]
     min_dist = 9999
@@ -235,12 +236,12 @@ class Solver
           4.times do |i|
             nx = cp.x + DX[i]
             ny = cp.y + DY[i]
-            next if !map.inside(nx, ny) || map.wall[ny][nx]
+            next if !map.inside(nx, ny) || (bot.drill_time < dist && map.wall[ny][nx])
             @bbuf.set(nx, ny)
             nx += DX[i]
             ny += DY[i]
             mv2 = MOVE_DOUBLE
-            if !map.inside(nx, ny) || map.wall[ny][nx]
+            if !map.inside(nx, ny) || (bot.drill_time < dist && map.wall[ny][nx])
               nx -= DX[i]
               ny -= DY[i]
               mv2 = 0
@@ -341,6 +342,13 @@ class Solver
       bot.plan << MOVE_ACTIONS[d]
     end
     bot.plan.concat(rot.reverse)
+    if bot.plan.size > (map.w + map.h) / 8 && map.n_L > 0 && bot.fast_time == 0
+      drill_plan = create_drill_plan(bot, map, bot.plan.size)
+      if drill_plan
+        bot.plan = drill_plan
+        bot.plan_force = true
+      end
+    end
     # puts "plan:#{bot.plan}"
   end
 
@@ -420,6 +428,42 @@ class Solver
     end
   end
 
+  private def create_drill_plan(bot, map, limit)
+    @bbuf.next
+    que = [bot.pos]
+    @bbuf.set(bot.x, bot.y)
+    target_pos = nil
+    {30, limit - 3}.min.times do |i|
+      nq = [] of Point
+      que.each do |p|
+        4.times do |j|
+          nx = p.x + DX[j]
+          ny = p.y + DY[j]
+          next if !map.inside(nx, ny) || @bbuf.get(nx, ny)
+          @bbuf.set(nx, ny)
+          @bbuf.dir[ny][nx] = j
+          if !map.wrapped[ny][nx]
+            target_pos = Point.new(nx, ny)
+            break
+          end
+          nq << Point.new(nx, ny)
+        end
+      end
+      break if target_pos
+      que = nq
+    end
+    return nil if !target_pos
+    plan = [] of ActionType
+    while target_pos != bot.pos
+      d = @bbuf.dir[target_pos.y][target_pos.x]
+      target_pos.x = target_pos.x - DX[d]
+      target_pos.y = target_pos.y - DY[d]
+      plan << MOVE_ACTIONS[d]
+    end
+    plan << ActionSimple::L
+    plan
+  end
+
   private def select_arm(bot, map)
     s = Set(Point).new
     s << Point.new(0, +1)
@@ -487,6 +531,7 @@ class Solver
         next if @wrap_score[i][j] != -1
         next if map.wrapped[i][j]
         @bbuf.next
+        @bbuf.set(j, i)
         any = true
         que = [Point.new(j, i)]
         idx = 0
