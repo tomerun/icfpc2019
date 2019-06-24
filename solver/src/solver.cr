@@ -1,14 +1,17 @@
 require "random"
 require "./defs"
 
-MOVE_DOUBLE = (1 << 4)
-SMALL_GROUP = 200
+MOVE_DOUBLE      = (1 << 4)
+SMALL_GROUP      = 200
+MYSTERIOUS_POINT =   5
 
 class Solver
   @map : Map
   @empty_dists : Array(Array(Int32)) | Nil
   @max_search_base_dist : Int32
   @wrap_score : Array(Array(Int32))
+  @clone_dir : Array(Array(Int32))
+  @booster_score : Int32
 
   def initialize(@orig_map : Map, @tl : Int64)
     @map = @orig_map.clone
@@ -17,11 +20,13 @@ class Solver
     @simulate_types = [] of Array(ActionType)
     @max_search_base_dist = ((@map.h + @map.w) * 0.2).to_i
     @wrap_score = Array.new(@map.h) { Array.new(@map.w, 0) }
+    @clone_dir = Array.new(@map.h) { Array.new(@map.w, -1) }
+    @booster_score = 50
     initialize_simulate_types
+    initialize_clone_dir
   end
 
   def initialize_simulate_types
-    # @simulate_types << [ActionSimple::W, ActionSimple::W, ActionSimple::W]
     types = {ActionSimple::W, ActionSimple::S, ActionSimple::A, ActionSimple::D, ActionSimple::E, ActionSimple::Q}
     actions = Array.new(3, ActionSimple::Z)
     initialize_simulate_types_rec(actions, 0, types)
@@ -43,6 +48,23 @@ class Solver
       end
       cur[depth] = t
       initialize_simulate_types_rec(cur, depth + 1, types)
+    end
+  end
+
+  def initialize_clone_dir
+    que = @map.mystery.to_a
+    que.each { |p| @clone_dir[p.y][p.x] = MYSTERIOUS_POINT }
+    idx = 0
+    while idx < que.size
+      cur = que[idx]
+      4.times do |i|
+        nx = cur.x - DX[i]
+        ny = cur.y - DY[i]
+        next if !@map.inside(nx, ny) || @map.wall[ny][nx] || @clone_dir[ny][nx] != -1
+        @clone_dir[ny][nx] = i
+        que << Point.new(nx, ny)
+      end
+      idx += 1
     end
   end
 
@@ -73,6 +95,8 @@ class Solver
       init_bot_base_dist(bot, bot.pos, @map)
     end
     @empty_dists = nil
+    @max_search_base_dist = ((@map.h + @map.w) * @rnd.rand * 0.2 + 0.05).to_i
+    @booster_score = @rnd.rand(300) + 5
     time = 0
     next_spawn = [] of Bot
     while @map.n_empty > 0
@@ -89,12 +113,16 @@ class Solver
       end
       if @map.n_empty != prev_empty
         @map.bots.each do |bot|
+          next if !bot.plan.empty? && bot.plan[0] == ActionSimple::C
           bot.plan_force = false
         end
       end
       # puts "time:#{time}"
       # puts @map
       @map.finalize_turn(next_spawn)
+      next_spawn.each do |bot|
+        init_bot_base_dist(bot, bot.pos, @map)
+      end
     end
     commands = @map.bots.map { |bot| bot.actions }
     {time, commands}
@@ -106,6 +134,12 @@ class Solver
     if map.n_B > 0
       bot.clear_plan
       return select_arm(bot, map)
+    elsif map.n_C > 0 && bot.fast_time == 0 && map.n_empty > 50
+      bot.clear_plan
+      bot.plan = create_clone_plan(bot, map)
+      bot.plan_force = true
+      map.n_C -= 1 # hack
+      return bot.plan.pop
     elsif map.n_F > 0 && bot.fast_time == 0
       bot.clear_plan
       return ActionSimple::F
@@ -190,7 +224,7 @@ class Solver
           booster_pos << bot.pos
         end
       end
-      score += booster_pos.size * 50
+      score += booster_pos.size * @booster_score
     ensure
       wrapped.each do |p|
         map.wrapped[p.y][p.x] = false
@@ -284,6 +318,7 @@ class Solver
           end
         end
       end
+      # puts "reached:#{reached} #{dist}"
       cpos = cpos_prior + cpos
       dist_pos << reached + cpos
       break if dist > min_dist + @max_search_base_dist || cpos.empty?
@@ -368,13 +403,12 @@ class Solver
             n += 1
           end
         end
-        if n > max_n && bot.base_dist[bp.y][bp.x] <= accept_base_dist
+        if n > max_n && (bot.drill_time > 0 || bot.base_dist[bp.y][bp.x] <= accept_base_dist)
           max_n = n
           max_pos = bp
         end
       end
       if max_n > 0
-        # puts "target #{i + 1} #{max_pos}"
         return {i + 1, max_pos}
       end
     end
@@ -462,6 +496,19 @@ class Solver
     end
     plan << ActionSimple::L
     plan
+  end
+
+  private def create_clone_plan(bot, map)
+    pos = bot.pos
+    plan = [] of ActionType
+    while @clone_dir[pos.y][pos.x] != MYSTERIOUS_POINT
+      d = @clone_dir[pos.y][pos.x]
+      pos.x = pos.x + DX[d]
+      pos.y = pos.y + DY[d]
+      plan << MOVE_ACTIONS[d]
+    end
+    plan << ActionSimple::C
+    plan.reverse
   end
 
   private def select_arm(bot, map)

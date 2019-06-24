@@ -109,7 +109,7 @@ class Map
       @n_R -= 1
       @beacons << bot.pos
     when ActionSimple::C
-      @n_C -= 1
+      # @n_C -= 1
       next_spawn << Bot.new(bot.pos)
     when ActionB
       @n_B -= 1
@@ -142,7 +142,10 @@ class Map
 
   def finalize_turn(next_spawn)
     @bots.concat(next_spawn)
-    next_spawn.each { |b| wrap(b) }
+    next_spawn.each do |b|
+      wrap(b)
+      b.base_dist = Array.new(h) { Array.new(w, 0) }
+    end
     next_spawn.clear
   end
 
