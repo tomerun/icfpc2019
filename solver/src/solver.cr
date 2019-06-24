@@ -8,12 +8,14 @@ MOVE_DOUBLE = (1 << 4)
 class Solver
   @map : Map
   @empty_dists : Array(Array(Int32)) | Nil
+  @max_search_base_dist : Int32
 
   def initialize(@orig_map : Map, @tl : Int64)
     @map = @orig_map.clone
     @rnd = Random.new(334)
     @bbuf = BFSBuffer.new
     @simulate_types = [] of Array(ActionType)
+    @max_search_base_dist = ((@map.h + @map.w) * 0.3).to_i
     initialize_simulate_types
   end
 
@@ -66,6 +68,9 @@ class Solver
 
   private def solve_single(best_result) : Tuple(Int32, Array(Array(ActionType)))
     @map = @orig_map.clone
+    @map.bots.each do |bot|
+      init_bot_base_dist(bot, bot.pos, @map)
+    end
     @empty_dists = nil
     time = 0
     next_spawn = [] of Bot
@@ -78,10 +83,10 @@ class Solver
         @map.get_booster(bot)
         action = select_action(bot, @map)
         @map.apply_action(action, bot, next_spawn)
-        # puts "action:#{action}"
+        puts "action:#{action}"
       end
-      # puts "time:#{time}"
-      # puts @map
+      puts "time:#{time}"
+      puts @map
       @map.finalize_turn(next_spawn)
     end
     commands = @map.bots.map { |bot| bot.actions }
@@ -216,9 +221,11 @@ class Solver
     dist_pos = Array(Array(Point)).new
     que = [bot.pos]
     min_dist = 9999
+    min_base_dist = 9999
     0.upto(9999) do |dist|
       cpos = [] of Point
       cpos_prior = [] of Point
+      reached = [] of Point
       que.each do |cp|
         if dist < bot.fast_time
           4.times do |i|
@@ -237,13 +244,16 @@ class Solver
             @bbuf.set(nx, ny)
             @bbuf.dir[ny][nx] = i | mv2
             np = Point.new(nx, ny)
-            if map.booster.has_key?(np)
-              cpos_prior << np
+            if !map.wrapped[ny][nx]
+              min_dist = {min_dist, dist}.min
+              min_base_dist = {min_base_dist, bot.base_dist[ny][nx]}.min
+              reached << np
             else
-              cpos << np
-            end
-            if min_dist == 9999 && !map.wrapped[ny][nx]
-              min_dist = dist
+              if map.booster.has_key?(np)
+                cpos_prior << np
+              else
+                cpos << np
+              end
             end
           end
         else
@@ -254,90 +264,57 @@ class Solver
             @bbuf.set(nx, ny)
             @bbuf.dir[ny][nx] = i
             np = Point.new(nx, ny)
-            if map.booster.has_key?(np)
-              cpos_prior << np
+            if !map.wrapped[ny][nx]
+              min_dist = {min_dist, dist}.min
+              min_base_dist = {min_base_dist, bot.base_dist[ny][nx]}.min
+              reached << np
             else
-              cpos << np
-            end
-            if min_dist == 9999 && !map.wrapped[ny][nx]
-              min_dist = dist
+              if map.booster.has_key?(np)
+                cpos_prior << np
+              else
+                cpos << np
+              end
             end
           end
         end
       end
       cpos = cpos_prior + cpos
-      break if dist > min_dist + 3 || cpos.empty?
-      dist_pos << cpos
+      dist_pos << reached + cpos
+      break if dist > min_dist + @max_search_base_dist || cpos.empty?
       que = cpos
     end
     if min_dist == 9999
       raise "cannot find wrap pos" if bot.fast_time == 0
-      if @empty_dists == nil
-        ed = Array.new(map.h) { Array.new(map.w, 9999) }
-        que = [] of Point
-        map.h.times do |i|
-          map.w.times do |j|
-            if !map.wrapped[i][j]
-              que << Point.new(j, i)
-              ed[i][j] = 0
-            end
-          end
-        end
-        dist = 1
-        while !que.empty?
-          nq = [] of Point
-          que.each do |p|
-            4.times do |i|
-              nx = p.x + DX[i]
-              ny = p.y + DY[i]
-              if map.inside(nx, ny) && !map.wall[ny][nx] && ed[ny][nx] == 9999
-                nq << Point.new(nx, ny)
-                ed[ny][nx] = dist
-              end
-            end
-          end
-          dist += 1
-          que = nq
-        end
-        @empty_dists = ed
-      end
-      ed = @empty_dists.not_nil!
-      dir = 0.upto(3).min_of do |i|
-        nx = bot.x + DX[i]
-        ny = bot.y + DY[i]
-        if map.inside(nx, ny) && !map.wall[ny][nx]
-          {ed[ny][nx], i}
-        else
-          {9999, i}
-        end
-      end
-      if dir[0] < ed[bot.y][bot.x]
-        bot.plan << ActionSimple::Z
-      else
-        bot.plan << {ActionSimple::W, ActionSimple::S, ActionSimple::A, ActionSimple::D}[dir[1]]
-      end
+      resque_wandering_wheel(bot, map)
       return
     end
 
-    best_time, best_pos = find_target(bot, map, dist_pos)
+    puts "min_base_dist:#{min_base_dist} min_dist:#{min_dist}"
+    if min_base_dist > min_dist
+      puts "change base to #{bot.pos} from #{bot.base}"
+      init_bot_base_dist(bot, bot.pos, map)
+      min_base_dist = min_dist
+    end
+
+    best_time, best_pos = find_target(bot, map, dist_pos, min_base_dist + 2)
     rot = [] of ActionSimple
     if bot.fast_time == 0 || min_dist < bot.fast_time - 2
       bot.rot_cw
-      time, pos = find_target(bot, map, dist_pos)
+      time, pos = find_target(bot, map, dist_pos, min_base_dist + 2)
       if time + 1 < best_time
         best_time = time + 1
         best_pos = pos
         rot = [ActionSimple::E]
       end
       bot.rot_cw
-      time, pos = find_target(bot, map, dist_pos)
+      time, pos = find_target(bot, map, dist_pos, min_base_dist + 2)
       if time + 2 < best_time
         best_time = time + 2
         best_pos = pos
         rot = [ActionSimple::E, ActionSimple::E]
       end
       bot.rot_cw
-      time, pos = find_target(bot, map, dist_pos)
+      time, pos = find_target(bot, map, dist_pos, min_base_dist + 2)
       if time + 1 < best_time
         best_time = time + 1
         best_pos = pos
@@ -361,20 +338,28 @@ class Solver
     # puts "plan:#{bot.plan}"
   end
 
-  private def find_target(bot, map, dist_pos)
+  private def find_target(bot, map, dist_pos, accept_base_dist)
     dist_pos.each_with_index do |dist_p, i|
       max_n = 0
       max_pos = bot.pos
       dist_p.each do |bp|
-        n = map.wrapped[bp.y][bp.x] ? 0 : 1
+        ok = false
+        n = 0
+        if map.wrapped[bp.y][bp.x]
+          n = 1
+          ok = bot.base_dist[bp.y][bp.x] <= accept_base_dist
+        end
         bot.arm.each do |ap|
           nx = bp.x + ap.x
           ny = bp.y + ap.y
           if map.inside(nx, ny) && !map.wrapped[ny][nx] && map.visible(bp.x, bp.y, ap.x, ap.y)
             n += 1
+            if bot.base_dist[ny][nx] <= accept_base_dist
+              ok = true
+            end
           end
         end
-        if n > max_n
+        if n > max_n && ok
           max_n = n
           max_pos = bp
         end
@@ -384,6 +369,53 @@ class Solver
       end
     end
     {9999, bot.pos}
+  end
+
+  private def resque_wandering_wheel(bot, map)
+    if @empty_dists == nil
+      ed = Array.new(map.h) { Array.new(map.w, 9999) }
+      que = [] of Point
+      map.h.times do |i|
+        map.w.times do |j|
+          if !map.wrapped[i][j]
+            que << Point.new(j, i)
+            ed[i][j] = 0
+          end
+        end
+      end
+      dist = 1
+      while !que.empty?
+        nq = [] of Point
+        que.each do |p|
+          4.times do |i|
+            nx = p.x + DX[i]
+            ny = p.y + DY[i]
+            if map.inside(nx, ny) && !map.wall[ny][nx] && ed[ny][nx] == 9999
+              nq << Point.new(nx, ny)
+              ed[ny][nx] = dist
+            end
+          end
+        end
+        dist += 1
+        que = nq
+      end
+      @empty_dists = ed
+    end
+    ed = @empty_dists.not_nil!
+    dir = 0.upto(3).min_of do |i|
+      nx = bot.x + DX[i]
+      ny = bot.y + DY[i]
+      if map.inside(nx, ny) && !map.wall[ny][nx]
+        {ed[ny][nx], i}
+      else
+        {9999, i}
+      end
+    end
+    if dir[0] < ed[bot.y][bot.x]
+      bot.plan << ActionSimple::Z
+    else
+      bot.plan << {ActionSimple::W, ActionSimple::S, ActionSimple::A, ActionSimple::D}[dir[1]]
+    end
   end
 
   private def select_arm(bot, map)
@@ -408,6 +440,30 @@ class Solver
     end
     ap = a.sample(@rnd)
     ActionB.new(ap.x, ap.y)
+  end
+
+  private def init_bot_base_dist(bot, pos, map)
+    bot.base = pos
+    @bbuf.next
+    @bbuf.set(pos.x, pos.y)
+    que = [pos]
+    dist = 1
+    while !que.empty?
+      nq = [] of Point
+      que.each do |p|
+        4.times do |i|
+          nx = p.x + DX[i]
+          ny = p.y + DY[i]
+          if map.inside(nx, ny) && !map.wall[ny][nx] && !@bbuf.get(nx, ny)
+            @bbuf.set(nx, ny)
+            bot.base_dist[ny][nx] = dist
+            nq << Point.new(nx, ny)
+          end
+        end
+      end
+      dist += 1
+      que = nq
+    end
   end
 end
 

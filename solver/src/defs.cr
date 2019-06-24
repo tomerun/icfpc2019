@@ -24,6 +24,7 @@ class Map
         @wrapped[ay][ax] = true
       end
     end
+    bot.base_dist = Array.new(h) { Array.new(w, 0) }
     @beacons = Array(Point).new
     @n_empty = @wrapped.map { |row| row.count(false) }.sum
     @n_B = @n_F = @n_L = @n_R = @n_C = 0
@@ -248,18 +249,20 @@ struct Point
 end
 
 class Bot
-  property pos, arm : Array(Point), fast_time, drill_time, actions, plan
+  property pos, arm : Array(Point), fast_time, drill_time, actions, plan, base, base_dist
 
   def initialize(@pos : Point)
     @fast_time = @drill_time = 0
     @arm = -1.upto(1).map { |dy| Point.new(1, dy) }.to_a
     @actions = [] of ActionType
     @plan = [] of ActionType
+    @base = @pos
+    @base_dist = [] of Array(Int32)
   end
 
   def initialize(
     @pos : Point, @arm : Array(Point), @fast_time : Int32, @drill_time : Int32,
-    @actions : Array(ActionType), @plan : Array(ActionType)
+    @actions : Array(ActionType), @plan : Array(ActionType), @base, @base_dist
   )
   end
 
@@ -308,7 +311,7 @@ class Bot
   end
 
   def clone
-    Bot.new(@pos, @arm.dup, @fast_time, @drill_time, @actions.dup, @plan.dup)
+    Bot.new(@pos, @arm.dup, @fast_time, @drill_time, @actions.dup, @plan.dup, @base, @base_dist.map { |a| a.dup })
   end
 
   def to_s(io : IO)
