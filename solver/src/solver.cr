@@ -15,7 +15,7 @@ class Solver
 
   def initialize(@orig_map : Map, @tl : Int64)
     @map = @orig_map.clone
-    @rnd = Random.new(2)
+    @rnd = Random.new(42)
     @bbuf = BFSBuffer.new
     @simulate_types = [] of Array(ActionType)
     @max_search_base_dist = ((@map.h + @map.w) * 0.2).to_i
@@ -107,7 +107,7 @@ class Solver
       prev_empty = @map.n_empty
       @map.bots.each do |bot|
         @map.get_booster(bot)
-        action = select_action(bot, @map)
+        action = select_action(bot, @map, time)
         @map.apply_action(action, bot, next_spawn)
         # puts "action:#{action}"
       end
@@ -128,9 +128,18 @@ class Solver
     {time, commands}
   end
 
-  private def select_action(bot, map) : ActionType
+  private def select_action(bot, map, time) : ActionType
     return ActionSimple::Z if map.n_empty == 0
     bot.plan_force = false if bot.plan.empty?
+    if time == 1
+      plan = create_arm_plan(bot, map)
+      if plan
+        bot.plan = plan
+        bot.plan_force = true
+        return bot.plan.pop
+      end
+    end
+
     if map.n_B > 0
       bot.clear_plan
       return select_arm(bot, map)
@@ -169,6 +178,12 @@ class Solver
           return use_actions[0]
         end
       else
+        arm_plan = create_arm_plan(bot, map)
+        if arm_plan
+          bot.plan = arm_plan
+          bot.plan_force = true
+          return bot.plan.pop
+        end
         bot.clear_plan
       end
       if bot.plan.empty?
@@ -225,6 +240,7 @@ class Solver
         end
       end
       score += booster_pos.size * @booster_score
+      score
     ensure
       wrapped.each do |p|
         map.wrapped[p.y][p.x] = false
@@ -460,6 +476,43 @@ class Solver
     else
       bot.plan << {ActionSimple::W, ActionSimple::S, ActionSimple::A, ActionSimple::D}[dir[1]]
     end
+  end
+
+  private def create_arm_plan(bot, map)
+    return nil if bot.fast_time > 0
+    @bbuf.next
+    que = [bot.pos]
+    @bbuf.set(bot.x, bot.y)
+    target_pos = nil
+    ((map.h + map.w) / 4).times do |i|
+      nq = [] of Point
+      que.each do |p|
+        4.times do |j|
+          nx = p.x + DX[j]
+          ny = p.y + DY[j]
+          next if !map.inside(nx, ny) || map.wall[ny][nx] || @bbuf.get(nx, ny)
+          @bbuf.set(nx, ny)
+          @bbuf.dir[ny][nx] = j
+          np = Point.new(nx, ny)
+          if map.booster.fetch(np, nil) == BoosterType::B
+            target_pos = np
+            break
+          end
+          nq << np
+        end
+      end
+      break if target_pos
+      que = nq
+    end
+    return nil if !target_pos
+    plan = [] of ActionType
+    while target_pos != bot.pos
+      d = @bbuf.dir[target_pos.y][target_pos.x]
+      target_pos.x = target_pos.x - DX[d]
+      target_pos.y = target_pos.y - DY[d]
+      plan << MOVE_ACTIONS[d]
+    end
+    plan
   end
 
   private def create_drill_plan(bot, map, limit)
