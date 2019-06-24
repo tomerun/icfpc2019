@@ -410,8 +410,8 @@ class InputParser
                 BoosterType::F
               when 'L'
                 BoosterType::L
-              when 'R'
-                BoosterType::R
+                # when 'R'
+                #   BoosterType::R
               when 'C'
                 BoosterType::C
               end
