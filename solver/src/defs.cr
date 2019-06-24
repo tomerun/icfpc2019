@@ -249,20 +249,21 @@ struct Point
 end
 
 class Bot
-  property pos, arm : Array(Point), fast_time, drill_time, actions, plan, base, base_dist
+  property pos, arm : Array(Point), fast_time, drill_time, actions, plan, plan_force, base, base_dist
 
   def initialize(@pos : Point)
     @fast_time = @drill_time = 0
     @arm = -1.upto(1).map { |dy| Point.new(1, dy) }.to_a
     @actions = [] of ActionType
     @plan = [] of ActionType
+    @plan_force = false
     @base = @pos
     @base_dist = [] of Array(Int32)
   end
 
   def initialize(
     @pos : Point, @arm : Array(Point), @fast_time : Int32, @drill_time : Int32,
-    @actions : Array(ActionType), @plan : Array(ActionType), @base, @base_dist
+    @actions : Array(ActionType), @plan : Array(ActionType), @plan_force : Bool, @base, @base_dist
   )
   end
 
@@ -310,12 +311,17 @@ class Bot
     end
   end
 
+  def clear_plan
+    @plan.clear
+    @plan_force = false
+  end
+
   def clone
-    Bot.new(@pos, @arm.dup, @fast_time, @drill_time, @actions.dup, @plan.dup, @base, @base_dist.map { |a| a.dup })
+    Bot.new(@pos, @arm.dup, @fast_time, @drill_time, @actions.dup, @plan.dup, @plan_force, @base, @base_dist.map { |a| a.dup })
   end
 
   def to_s(io : IO)
-    io << @pos << " " << @arm << " ft:#{@fast_time} dt:#{@drill_time}"
+    io << @pos << " " << @arm << " ft:#{@fast_time} dt:#{@drill_time} force:#{@plan_force} plan:#{@plan}"
   end
 
   def inspect(io : IO)

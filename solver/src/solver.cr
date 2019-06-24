@@ -1,21 +1,22 @@
 require "random"
 require "./defs"
 
-WRAP_SCORE  = 10000.0
-NEAR_SCORE  =  1000.0
 MOVE_DOUBLE = (1 << 4)
+SMALL_GROUP = 200
 
 class Solver
   @map : Map
   @empty_dists : Array(Array(Int32)) | Nil
   @max_search_base_dist : Int32
+  @wrap_score : Array(Array(Int32))
 
   def initialize(@orig_map : Map, @tl : Int64)
     @map = @orig_map.clone
-    @rnd = Random.new(334)
+    @rnd = Random.new(2)
     @bbuf = BFSBuffer.new
     @simulate_types = [] of Array(ActionType)
-    @max_search_base_dist = ((@map.h + @map.w) * 0.3).to_i
+    @max_search_base_dist = ((@map.h + @map.w) * 0.2).to_i
+    @wrap_score = Array.new(@map.h) { Array.new(@map.w, 0) }
     initialize_simulate_types
   end
 
@@ -79,14 +80,20 @@ class Solver
       if time == best_result # prune
         return {best_result, [] of Array(ActionType)}
       end
+      prev_empty = @map.n_empty
       @map.bots.each do |bot|
         @map.get_booster(bot)
         action = select_action(bot, @map)
         @map.apply_action(action, bot, next_spawn)
-        puts "action:#{action}"
+        # puts "action:#{action}"
       end
-      puts "time:#{time}"
-      puts @map
+      if @map.n_empty != prev_empty
+        @map.bots.each do |bot|
+          bot.plan_force = false
+        end
+      end
+      # puts "time:#{time}"
+      # puts @map
       @map.finalize_turn(next_spawn)
     end
     commands = @map.bots.map { |bot| bot.actions }
@@ -94,42 +101,48 @@ class Solver
   end
 
   private def select_action(bot, map) : ActionType
-    # puts "pre plan:#{bot.plan}"
     return ActionSimple::Z if map.n_empty == 0
+    bot.plan_force = false if bot.plan.empty?
     if map.n_B > 0
-      bot.plan.clear
+      bot.clear_plan
       return select_arm(bot, map)
     elsif map.n_F > 0 && bot.fast_time == 0
-      bot.plan.clear
+      bot.clear_plan
       return ActionSimple::F
-    elsif bot.plan.size >= 3
+    elsif bot.plan.size >= 3 || bot.plan_force
       return bot.plan.pop
     else
-      cur_wrapped = bot.plan.empty? ? 0 : simulate(bot, map, bot.plan.reverse)
-      max_wrapped = 0
-      max_actions = [] of Array(ActionType)
-      @simulate_types.each do |actions|
-        n = simulate(bot, map, actions)
-        if n > max_wrapped
-          max_wrapped = n
-          max_actions.clear
-          max_actions << actions
-          # puts "#{n} #{max_actions}"
-        elsif n > 0 && n == max_wrapped
-          max_actions << actions
+      do_simulate = update_wrap_score(bot, map)
+      if do_simulate
+        cur_wrapped = bot.plan.empty? ? 0 : simulate(bot, map, bot.plan.reverse)
+        max_wrapped = 0
+        max_actions = [] of Array(ActionType)
+        @simulate_types.each do |actions|
+          n = simulate(bot, map, actions)
+          if n > max_wrapped
+            max_wrapped = n
+            max_actions.clear
+            max_actions << actions
+          elsif n > 0 && n == max_wrapped
+            max_actions << actions
+          end
         end
-      end
-      if max_wrapped > cur_wrapped
-        use_actions = max_actions.sample(@rnd)
-        bot.plan.clear
-        bot.plan << use_actions[2] << use_actions[1]
-        return use_actions[0]
+        if max_wrapped > cur_wrapped
+          use_actions = max_actions.sample(@rnd)
+          bot.clear_plan
+          bot.plan << use_actions[2] << use_actions[1]
+          bot.plan_force = max_wrapped > SMALL_GROUP
+          return use_actions[0]
+        end
+      else
+        bot.clear_plan
       end
       if bot.plan.empty?
         create_plan(bot, map)
       end
       return bot.plan.pop if !bot.plan.empty?
     end
+    raise "why Z???"
     return ActionSimple::Z
   end
 
@@ -195,24 +208,15 @@ class Solver
       if map.inside(x, y) && !map.wrapped[y][x] && map.visible(bot.x, bot.y, ap.x, ap.y)
         map.wrapped[y][x] = true
         wrapped << Point.new(x, y)
-        score += collect_score(map, x, y)
+        score += @wrap_score[y][x]
       end
     end
     if !map.wrapped[bot.y][bot.x]
       map.wrapped[bot.y][bot.x] = true
       wrapped << bot.pos
-      score += collect_score(map, bot.x, bot.y)
+      score += @wrap_score[bot.y][bot.x]
     end
     score
-  end
-
-  private def collect_score(map, x, y)
-    neighbor = (4.times.count do |i|
-      nx = x + DX[i]
-      ny = y + DY[i]
-      map.inside(nx, ny) && !map.wrapped[ny][nx]
-    end)
-    (5 - neighbor) ** 2
   end
 
   private def create_plan(bot, map)
@@ -222,16 +226,17 @@ class Solver
     que = [bot.pos]
     min_dist = 9999
     min_base_dist = 9999
-    0.upto(9999) do |dist|
+    1.upto(9999) do |dist|
       cpos = [] of Point
       cpos_prior = [] of Point
       reached = [] of Point
       que.each do |cp|
-        if dist < bot.fast_time
+        if dist <= bot.fast_time
           4.times do |i|
             nx = cp.x + DX[i]
             ny = cp.y + DY[i]
             next if !map.inside(nx, ny) || map.wall[ny][nx]
+            @bbuf.set(nx, ny)
             nx += DX[i]
             ny += DY[i]
             mv2 = MOVE_DOUBLE
@@ -289,32 +294,33 @@ class Solver
       return
     end
 
-    puts "min_base_dist:#{min_base_dist} min_dist:#{min_dist}"
+    # puts "min_base_dist:#{min_base_dist} min_dist:#{min_dist}"
     if min_base_dist > min_dist
-      puts "change base to #{bot.pos} from #{bot.base}"
+      # puts "change base to #{bot.pos} from #{bot.base}"
       init_bot_base_dist(bot, bot.pos, map)
       min_base_dist = min_dist
     end
 
-    best_time, best_pos = find_target(bot, map, dist_pos, min_base_dist + 2)
+    max_accept_dist = min_base_dist + 2 + {min_base_dist + 2, bot.fast_time}.min
+    best_time, best_pos = find_target(bot, map, dist_pos, max_accept_dist)
     rot = [] of ActionSimple
     if bot.fast_time == 0 || min_dist < bot.fast_time - 2
       bot.rot_cw
-      time, pos = find_target(bot, map, dist_pos, min_base_dist + 2)
+      time, pos = find_target(bot, map, dist_pos, max_accept_dist)
       if time + 1 < best_time
         best_time = time + 1
         best_pos = pos
         rot = [ActionSimple::E]
       end
       bot.rot_cw
-      time, pos = find_target(bot, map, dist_pos, min_base_dist + 2)
+      time, pos = find_target(bot, map, dist_pos, max_accept_dist)
       if time + 2 < best_time
         best_time = time + 2
         best_pos = pos
         rot = [ActionSimple::E, ActionSimple::E]
       end
       bot.rot_cw
-      time, pos = find_target(bot, map, dist_pos, min_base_dist + 2)
+      time, pos = find_target(bot, map, dist_pos, max_accept_dist)
       if time + 1 < best_time
         best_time = time + 1
         best_pos = pos
@@ -343,28 +349,24 @@ class Solver
       max_n = 0
       max_pos = bot.pos
       dist_p.each do |bp|
-        ok = false
         n = 0
-        if map.wrapped[bp.y][bp.x]
+        if !map.wrapped[bp.y][bp.x]
           n = 1
-          ok = bot.base_dist[bp.y][bp.x] <= accept_base_dist
         end
         bot.arm.each do |ap|
           nx = bp.x + ap.x
           ny = bp.y + ap.y
           if map.inside(nx, ny) && !map.wrapped[ny][nx] && map.visible(bp.x, bp.y, ap.x, ap.y)
             n += 1
-            if bot.base_dist[ny][nx] <= accept_base_dist
-              ok = true
-            end
           end
         end
-        if n > max_n && ok
+        if n > max_n && bot.base_dist[bp.y][bp.x] <= accept_base_dist
           max_n = n
           max_pos = bp
         end
       end
       if max_n > 0
+        # puts "target #{i + 1} #{max_pos}"
         return {i + 1, max_pos}
       end
     end
@@ -411,7 +413,7 @@ class Solver
         {9999, i}
       end
     end
-    if dir[0] < ed[bot.y][bot.x]
+    if dir[0] > ed[bot.y][bot.x]
       bot.plan << ActionSimple::Z
     else
       bot.plan << {ActionSimple::W, ActionSimple::S, ActionSimple::A, ActionSimple::D}[dir[1]]
@@ -464,6 +466,59 @@ class Solver
       dist += 1
       que = nq
     end
+  end
+
+  private def update_wrap_score(bot, map)
+    len = bot.arm.max_of { |p| {p.x.abs, p.y.abs}.max } + 3
+    l = {bot.x - len, 0}.max
+    r = {bot.x + len, map.w - 1}.min
+    b = {bot.y - len, 0}.max
+    t = {bot.y + len, map.h - 1}.min
+    b.upto(t) do |i|
+      l.upto(r) do |j|
+        @wrap_score[i][j] = -1
+      end
+    end
+    any = false
+    max_que_size = 10
+    b.upto(t) do |i|
+      l.upto(r) do |j|
+        next if @wrap_score[i][j] != -1
+        next if map.wrapped[i][j]
+        @bbuf.next
+        any = true
+        que = [Point.new(j, i)]
+        idx = 0
+        while idx < que.size && que.size < max_que_size
+          cur = que[idx]
+          4.times do |k|
+            nx = cur.x + DX[k]
+            ny = cur.y + DY[k]
+            next if !map.inside(nx, ny) || map.wrapped[ny][nx] || @bbuf.get(nx, ny)
+            que << Point.new(nx, ny)
+            @bbuf.set(nx, ny)
+          end
+          idx += 1
+        end
+        score = que.size >= max_que_size ? 1 : SMALL_GROUP
+        que.each do |p|
+          @wrap_score[p.y][p.x] = score
+        end
+      end
+    end
+    return false if !any
+    b.upto(t) do |i|
+      l.upto(r) do |j|
+        next if @wrap_score[i][j] == -1
+        neighbor = (4.times.count do |k|
+          nx = j + DX[k]
+          ny = i + DY[k]
+          map.inside(nx, ny) && !map.wrapped[ny][nx]
+        end)
+        @wrap_score[i][j] += (4 - neighbor) ** 2
+      end
+    end
+    true
   end
 end
 
